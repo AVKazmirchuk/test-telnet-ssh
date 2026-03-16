@@ -21,3 +21,4 @@ https://github.com/laudrup/async-ssh/blob/master/doc/index.rst
 https://habr.com/ru/companies/ispsystem/articles/430488/
 https://libssh2.org/examples/ssh2_exec.html
 https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html
+https://gitmemories.com/KazDragon/telnetpp/issues/262
