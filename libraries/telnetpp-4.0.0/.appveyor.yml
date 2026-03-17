@@ -1,0 +1,59 @@
+image:
+  - Visual Studio 2019
+
+# Build only on the master branch, and for PRs.
+branches:
+  only:
+    - master
+
+build:
+  parallel: true
+  verbosity: detailed
+
+configuration:
+  - Debug
+  - Release
+
+platform:
+  - x64
+
+environment:
+  #  APPVEYOR_SAVE_CACHE_ON_ERROR: true
+
+  matrix:
+    - shared: True
+    - shared: False
+
+cache:
+#  - C:\Tools\vcpkg\installed
+
+init:
+  - echo Appveyor Image = %APPVEYOR_BUILD_WORKER_IMAGE%
+  - if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2019" ( set "generator=Visual Studio 16 2019" && set "toolset=v142" )
+  - echo Generator = %generator%
+
+install:
+  - cd C:\Tools\vcpkg
+  - git pull
+  - .\bootstrap-vcpkg.bat
+  - cd %appveyor_build_folder%
+  - vcpkg install boost-algorithm:%platform%-windows
+  - vcpkg install boost-smart-ptr:%platform%-windows
+  - vcpkg install boost-scope-exit:%platform%-windows
+  - vcpkg install boost-container:%platform%-windows
+  - vcpkg install boost-core:%platform%-windows
+  - vcpkg install boost-exception:%platform%-windows
+  - vcpkg install boost-io:%platform%-windows
+  - vcpkg install boost-range:%platform%-windows
+  - vcpkg install boost-signals2:%platform%-windows
+  - vcpkg install zlib:%platform%-windows
+  - vcpkg install gtest:%platform%-windows
+
+build_script:
+  - mkdir build
+  - cd build
+  - cmake -G "%generator%" -DCMAKE_TOOLCHAIN_FILE=C:/Tools/vcpkg/scripts/buildsystems/vcpkg.cmake -DTELNETPP_WITH_ZLIB=True -DBUILD_SHARED_LIBS=%shared% ..
+  - cmake --build . --config %configuration%
+
+test_script:
+  - ctest . -C %configuration%

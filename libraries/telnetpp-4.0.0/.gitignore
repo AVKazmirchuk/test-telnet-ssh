@@ -1,0 +1,8 @@
+export.hpp
+version.hpp
+/.vs
+/out
+/CMakeSettings.json
+build
+.cache
+compile_commands.json
