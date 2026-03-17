@@ -25,5 +25,6 @@ https://gitmemories.com/KazDragon/telnetpp/issues/262
 https://codedocs.xyz/KazDragon/telnetpp/
 https://thelazyadmin.blog/creating-a-simple-telnet-client-in-c
 https://s5.hpc.name/thread/t781/70793/prosteyshiy-primer-raboty-s-boost-asio-klient-server.html
+https://iq.opengenus.org/tcp-asynchronous-client-server-in-cpp-boost-asio/
 
 C:\Users\AKazmirchuk\CLionProjects\test-telnet-ssh\libraries\telnetpp-4.0.0\build>"C:\Program Files\JetBrains\CLion 2021.3.4\bin\cmake\win\bin\cmake.exe" -S ..\ -B . -DCMAKE_CXX_COMPILER="C:/MinGW-W64/x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1/bin/c++.exe" -DCMAKE_PREFIX_PATH="C:\\boost_1_87_0" -DTELNETPP_WITH_TESTS=False -DCMAKE_MAKE_PROGRAM="C:/Program Files/JetBrains/CLion 2021.3.4/bin/ninja/win/ninja.exe" -G Ninja
