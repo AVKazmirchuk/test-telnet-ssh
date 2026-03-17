@@ -23,3 +23,4 @@ https://libssh2.org/examples/ssh2_exec.html
 https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html
 https://gitmemories.com/KazDragon/telnetpp/issues/262
 https://codedocs.xyz/KazDragon/telnetpp/
+https://thelazyadmin.blog/creating-a-simple-telnet-client-in-c
