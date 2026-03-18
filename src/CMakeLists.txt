@@ -19,7 +19,7 @@ endfunction()
 # Поместить все целевые файлы RUNTIME при сборке
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${Runtime_Output_Directory})
 
-add_executable(${Application_Name} main.cpp)
+add_executable(${Application_Name} main.cpp AsioTelnetClient.cpp)
 
 # Задать переменную списка поддиректорий с заголовками
 set(Include_Subdirectories "")

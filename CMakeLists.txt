@@ -37,6 +37,7 @@ find_package(telnetpp REQUIRED)
 add_subdirectory(src)
 
 # Указать библиотеки, которые нужно использовать при компоновке заданной цели и/или её зависимостей
+target_link_libraries(${Application_Name} PRIVATE ws2_32)
 target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
 
 
