@@ -1,3 +1,7 @@
+https://www.linux.org.ru/forum/talks/10029102
+https://gitmemories.com/KazDragon/telnetpp/issues/262
+https://rtfm.co.ua/ru/c-libssh-primer-ssh-klienta/
+
 https://habr.com/ru/articles/503432/
 https://evileg.com/ru/post/167/
 https://github.com/kmansoo/SimpleTelnetClient/tree/master
@@ -19,8 +23,11 @@ https://listarchives.boost.org/boost-users/att-40895/telnet.cpp
 https://github.com/pocoproject/poco/blob/main/Net/samples/tcpclient/src/tcpclient.cpp
 https://github.com/laudrup/async-ssh/blob/master/doc/index.rst
 https://habr.com/ru/companies/ispsystem/articles/430488/
-https://libssh2.org/examples/ssh2_exec.html
-https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html
+https://libssh2.org/examples/ssh2_exec.html    https://github.com/libssh2/libssh2/blob/master/docs/INSTALL_CMAKE.md
+https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html    https://github.com/openssl/openssl/releases    https://www.msys2.org/
+https://s5.hpc.name/thread/s720/136856/rabota-s-ssh-v-c-s-ispolzovaniem-biblioteki-libssh2.html
+https://club.shelek.ru/viewart.php?id=35
+https://citforum.ru/book/cook/winsock.shtml
 https://gitmemories.com/KazDragon/telnetpp/issues/262
 https://codedocs.xyz/KazDragon/telnetpp/
 https://thelazyadmin.blog/creating-a-simple-telnet-client-in-c
@@ -29,5 +36,16 @@ https://iq.opengenus.org/tcp-asynchronous-client-server-in-cpp-boost-asio/
 https://www.boost.org/doc/user-guide/task-networking.html
 https://armantutorial.wordpress.com/2014/07/23/winsock-tutorial-socket-programming-in-c-on-windows-using-codeblock/
 https://github.com/pocoproject/poco/tree/poco-1.15.0-release/Net/samples/tcpclient
+
+https://github.com/thekamik/Telnet-Client/blob/main/telnet.c
+https://www.daniweb.com/programming/software-development/threads/21062/telnet-client
+https://citforum.ru/book/cook/winsock.shtml
+https://club.shelek.ru/viewart.php?id=35
+
+https://github.com/thekamik/Telnet-Client/blob/main/telnet.c
+https://www.gaia-gis.it/gaia-sins/mingw64_how_to.html#open-ssl
+https://wiki.qt.io/Compiling_OpenSSL_with_MinGW
+https://blog.swesonga.org/2023/03/12/building-openssl-on-windows/
+https://github.com/niXman/mingw-builds-binaries/releases?page=1
 
 C:\Users\AKazmirchuk\CLionProjects\test-telnet-ssh\libraries\telnetpp-4.0.0\build>"C:\Program Files\JetBrains\CLion 2021.3.4\bin\cmake\win\bin\cmake.exe" -S ..\ -B . -DCMAKE_CXX_COMPILER="C:/MinGW-W64/x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1/bin/c++.exe" -DCMAKE_PREFIX_PATH="C:\\boost_1_87_0" -DTELNETPP_WITH_TESTS=False -DCMAKE_MAKE_PROGRAM="C:/Program Files/JetBrains/CLion 2021.3.4/bin/ninja/win/ninja.exe" -G Ninja

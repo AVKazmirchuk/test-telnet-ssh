@@ -29,7 +29,7 @@ set(Boost_INCLUDE_DIR "C:\\boost_1_87_0")
 find_package(Boost REQUIRED)
 
 # В зависимости от добавления библиотеки в проект, закомментировать-раскомментировать if-endif и find_package
-find_package(telnetpp REQUIRED)
+#find_package(telnetpp REQUIRED)
 #if (NOT TARGET telnetpp)
 #    add_subdirectory(./libraries/telnetpp-4.0.0)
 #endif()
@@ -38,7 +38,7 @@ add_subdirectory(src)
 
 # Указать библиотеки, которые нужно использовать при компоновке заданной цели и/или её зависимостей
 target_link_libraries(${Application_Name} PRIVATE ws2_32)
-target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
+#target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
 
 
 
