@@ -28,6 +28,8 @@ LIST(APPEND Include_Directories ${CMAKE_SOURCE_DIR}/src)
 set(Boost_INCLUDE_DIR "C:\\boost_1_87_0")
 find_package(Boost REQUIRED)
 
+find_package(libssh2 REQUIRED)
+
 # В зависимости от добавления библиотеки в проект, закомментировать-раскомментировать if-endif и find_package
 #find_package(telnetpp REQUIRED)
 #if (NOT TARGET telnetpp)
@@ -38,6 +40,7 @@ add_subdirectory(src)
 
 # Указать библиотеки, которые нужно использовать при компоновке заданной цели и/или её зависимостей
 target_link_libraries(${Application_Name} PRIVATE ws2_32)
+target_link_libraries(${Application_Name} PRIVATE libssh2::libssh2)
 #target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
 
 
