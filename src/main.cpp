@@ -1,4 +1,4 @@
-// AVOID ERROR BECAUSE OF swprintf
+/*// AVOID ERROR BECAUSE OF swprintf
 #undef __STRICT_ANSI__
 // #define FOR WIN7. CAN'T FIND sdkddkver.h ON MINGW
 #define _WIN32_WINNT 0x0601
@@ -29,7 +29,7 @@ using boost::protect;
 /*!
   * \todo Create exceptions, instead of using logic_error
  */
-class TestSSH
+/*class TestSSH
 {
 public:
     TestSSH();
@@ -131,7 +131,7 @@ void TestSSH::Connect(string const& hostName, string const& user,
 /*!
  * \todo Turn this into a loop
  */
-void TestSSH::ExecuteCommand(string const& command)
+/*void TestSSH::ExecuteCommand(string const& command)
 {
     this->command = command;
 
@@ -424,7 +424,7 @@ int main(int argc, char *argv[])
 
     libssh2_exit();
     return 0;
-}
+}*/
 
 
 
@@ -450,7 +450,7 @@ int main(int argc, char *argv[])
 
 
 
-/*#include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <winsock2.h>
@@ -532,7 +532,7 @@ int decode_message(SOCKET mainSocket, char messageBuffer[BUFFERSIZE], char retur
 
 int main(int argc, char* argv[]) {
     // Arguments
-    char IpAddress[15] = "52.1.193.111";    // longest possible IPv4 address have only 15 characters
+    char IpAddress[15] = "192.168.4.13";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
     unsigned short portNumber = 23;    // port number
     int recvTimeout = 500;  // how long client wait for server response
     int echoVerification = 1;   // echo verification on client side
@@ -698,4 +698,4 @@ int main(int argc, char* argv[]) {
 
     printf("END \n");
     return 0;
-}*/
+}//*/
