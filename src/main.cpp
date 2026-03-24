@@ -10,7 +10,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-//#include "libssh2_setup.h"
+//#include <os400/libssh2_config.h>
 #include <libssh2.h>
 
 #ifdef HAVE_SYS_SOCKET_H
@@ -30,11 +30,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
+#include <winsock2.h>
 
 
 
-
-static const char *hostname = "127.0.0.1";
+static const char *hostname = "52.1.193.111";
 static const char *commandline = "uptime";
 static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
 static const char *privkey = "/home/username/.ssh/id_rsa";
