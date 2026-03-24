@@ -29,6 +29,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
+
+
+
 
 static const char *hostname = "127.0.0.1";
 static const char *commandline = "uptime";
@@ -51,12 +55,12 @@ static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 
     FD_ZERO(&fd);
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #endif
     FD_SET(socket_fd, &fd);
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
 
@@ -76,6 +80,7 @@ static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 
 int main(int argc, char *argv[])
 {
+std::cout << "qqq";
     uint32_t hostaddr;
     libssh2_socket_t sock;
     struct sockaddr_in sin;
@@ -84,7 +89,7 @@ int main(int argc, char *argv[])
     LIBSSH2_SESSION *session = NULL;
     LIBSSH2_CHANNEL *channel;
     int exitcode;
-    char *exitsignal = NULL;
+    char *exitsignal = (char *)"none";
     ssize_t bytecount = 0;
     size_t len;
     LIBSSH2_KNOWNHOSTS *nh;
@@ -232,7 +237,7 @@ int main(int argc, char *argv[])
     } while(1);
     if(!channel) {
         fprintf(stderr, "Error\n");
-        return 1;
+        exit(1);
     }
     while((rc = libssh2_channel_exec(channel, commandline)) ==
           LIBSSH2_ERROR_EAGAIN) {
@@ -240,7 +245,7 @@ int main(int argc, char *argv[])
     }
     if(rc) {
         fprintf(stderr, "exec error\n");
-        return 1;
+        exit(1);
     }
     for(;;) {
         ssize_t nread;
@@ -283,8 +288,7 @@ int main(int argc, char *argv[])
     }
 
     if(exitsignal)
-        fprintf(stderr, "\nGot signal: %s\n",
-                exitsignal ? exitsignal : "none");
+        fprintf(stderr, "\nGot signal: %s\n", exitsignal);
     else
         fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",
                 exitcode, (long)bytecount);
@@ -338,433 +342,10 @@ int main(int argc, char *argv[])
 
 
 
-/*// AVOID ERROR BECAUSE OF swprintf
-#undef __STRICT_ANSI__
-// #define FOR WIN7. CAN'T FIND sdkddkver.h ON MINGW
-#define _WIN32_WINNT 0x0601
 
-//#include "libssh2_config.h"
-#include "libssh2.h"
 
-#include <boost/asio.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/function.hpp>
-#include <boost/bind.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/bind/protect.hpp>
 
-#include <utility>
 
-using boost::asio::ip::tcp;
-using std::string;
-using std::cout;
-using std::endl;
-using boost::asio::deadline_timer;
-using boost::asio::io_context;
-using boost::protect;
-
-// Please, note: The class isn't called TestSSH because I lack imagination.
-// The name comes from the fact that this hasn't yet seen anything
-// beyond basic testing.
-/*!
-  * \todo Create exceptions, instead of using logic_error
- */
-/*class TestSSH
-{
-public:
-    TestSSH();
-    ~TestSSH();
-    void Connect(string const& hostName, string const& user,
-                 string const& password);
-    void ExecuteCommand(string const& command);
-private:
-    static const int PORT = 22;
-    enum state { WORK_DONE, STILL_WORKING };
-
-    void LoopAsync(boost::function<state()> DoWork, bool isRead);
-    void LoopTimer(boost::function<state()> DoWork);
-
-    void ConnectSocket(string const& hostName);
-    void CreateSSHSession();
-    state DoHandshake();
-    state DoAuthenticate();
-    state DoCreateChannel();
-    state DoExecute();
-    state DoGetResult();
-    state DoCloseChannel();
-    void Cleanup();
-
-    string userName;
-    string password;
-    string command;
-    io_service ios;
-    tcp::socket sock;
-    deadline_timer dtimer;
-    LIBSSH2_SESSION* session;
-    LIBSSH2_CHANNEL *channel;
-};
-
-const int TestSSH::PORT;
-
-TestSSH::TestSSH() : userName("None"), password("None"), command("None"),
-                     sock(ios), dtimer(ios), session(nullptr), channel(nullptr)
-{
-}
-
-TestSSH::~TestSSH()
-{
-    if (channel != nullptr)
-    {
-        libssh2_channel_free(channel);
-        channel = nullptr;
-    }
-
-    if (session != nullptr)
-    {
-        libssh2_session_set_blocking(session, 1);
-        libssh2_session_disconnect(session, "Disconnecting");
-        libssh2_session_free(session);
-        session = nullptr;
-    }
-
-    if (sock.is_open())
-    {
-        try
-        {
-            boost::system::error_code ec;
-            sock.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-            sock.close(ec);
-        }
-        catch (std::exception& ex)
-        {
-            // NO EXCEPTIONS IN DTOR, LOG IT SOMEWHERE
-        }
-    }
-}
-
-void TestSSH::Connect(string const& hostName, string const& user,
-                      string const& password)
-{
-    // THESE ARE BLOCKING
-    ConnectSocket(hostName);
-    CreateSSHSession();
-
-    userName = user;
-    this->password = std::move(password);
-
-    // NOW WE ENTER THE IO SERVICE LOOP
-    // FOR THE HANDSHAKE, READ EVENT IS ENOUGH
-    sock.async_read_some(boost::asio::null_buffers(),
-                         boost::bind(&TestSSH::LoopAsync, this,
-                                     protect(boost::bind(&TestSSH::DoHandshake, this)), true));
-    ios.run();
-
-    // THEN, THE AUTHENTICATION. THIS ONE GOES WITH A TIMER, FOR NOW.
-    // NEED MORE TESTING TO SEE IF I CAN GET ASYNC READ/WRITE TO WORK
-    ios.reset(); // RESET THE EVENT LOOP, SO IT MAY BE REUSED
-    dtimer.expires_from_now(boost::posix_time::milliseconds(500));
-    dtimer.async_wait(boost::bind(&TestSSH::LoopTimer, this,
-                                  protect(boost::bind(&TestSSH::DoAuthenticate, this))));
-    ios.run();
-}
-
-/*!
- * \todo Turn this into a loop
- */
-/*void TestSSH::ExecuteCommand(string const& command)
-{
-    this->command = command;
-
-    ios.reset();
-    sock.async_read_some(boost::asio::null_buffers(),
-                         boost::bind(&TestSSH::LoopAsync, this,
-                                     protect(boost::bind(&TestSSH::DoCreateChannel, this)), true));
-    sock.async_write_some(boost::asio::null_buffers(),
-                          boost::bind(&TestSSH::LoopAsync, this,
-                                      protect(boost::bind(&TestSSH::DoCreateChannel, this)), false));
-    ios.run();
-
-    ios.reset();
-    sock.async_read_some(boost::asio::null_buffers(),
-                         boost::bind(&TestSSH::LoopAsync, this,
-                                     protect(boost::bind(&TestSSH::DoExecute, this)), true));
-    sock.async_write_some(boost::asio::null_buffers(),
-                          boost::bind(&TestSSH::LoopAsync, this,
-                                      protect(boost::bind(&TestSSH::DoExecute, this)), false));
-    ios.run();
-
-    ios.reset();
-    sock.async_read_some(boost::asio::null_buffers(),
-                         boost::bind(&TestSSH::LoopAsync, this,
-                                     protect(boost::bind(&TestSSH::DoGetResult, this)), true));
-    sock.async_write_some(boost::asio::null_buffers(),
-                          boost::bind(&TestSSH::LoopAsync, this,
-                                      protect(boost::bind(&TestSSH::DoGetResult, this)), false));
-    ios.run();
-
-    ios.reset();
-    sock.async_read_some(boost::asio::null_buffers(),
-                         boost::bind(&TestSSH::LoopAsync, this,
-                                     protect(boost::bind(&TestSSH::DoCloseChannel, this)), true));
-    sock.async_write_some(boost::asio::null_buffers(),
-                          boost::bind(&TestSSH::LoopAsync, this,
-                                      protect(boost::bind(&TestSSH::DoCloseChannel, this)), false));
-    ios.run();
-
-    // THIS IS BLOCKING
-    Cleanup();
-}
-
-void TestSSH::LoopAsync(boost::function<state()> DoWork, bool isRead)
-{
-    if (sock.get_io_service().stopped())
-    {
-        return;
-    }
-
-    state st = DoWork();
-
-    if (st == STILL_WORKING)
-    {
-        if (isRead)
-        {
-            sock.async_read_some(boost::asio::null_buffers(),
-                                 boost::bind(&TestSSH::LoopAsync, this, DoWork, isRead));
-        }
-        else
-        {
-            sock.async_write_some(boost::asio::null_buffers(),
-                                  boost::bind(&TestSSH::LoopAsync, this, DoWork, isRead));
-        }
-        return;
-    }
-
-    // OTHERWISE, WORK IS OVER
-    sock.get_io_service().stop();
-}
-
-void TestSSH::LoopTimer(boost::function<state()> DoWork)
-{
-    state st = DoWork();
-
-    if (st == STILL_WORKING)
-    {
-        dtimer.expires_from_now(boost::posix_time::milliseconds(500));
-        dtimer.async_wait(boost::bind(&TestSSH::LoopTimer, this, DoWork));
-    }
-    // OTHERWISE, WORK IS OVER; NOTHING TO DO, AS THE TIMER IS NOT REARMED
-}
-
-void TestSSH::ConnectSocket(string const& hostName)
-{
-    tcp::resolver rsv(ios);
-    tcp::resolver::query query(hostName,
-                               boost::lexical_cast< std::string >(PORT));
-    tcp::resolver::iterator iter = rsv.resolve(query);
-    boost::asio::connect(sock, iter);
-}
-
-void TestSSH::CreateSSHSession()
-{
-    session = libssh2_session_init();
-    if (!session)
-    {
-        throw std::logic_error("Error creating session");
-    }
-
-    libssh2_session_set_blocking(session, 0);
-}
-
-TestSSH::state TestSSH::DoHandshake()
-{
-    int rc = libssh2_session_handshake(session, sock.native_handle());
-
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-    {
-        return STILL_WORKING;
-    }
-
-    if (rc)
-    {
-        throw std::logic_error("Error in SSH handshake");
-    }
-
-    return WORK_DONE;
-}
-
-TestSSH::state TestSSH::DoAuthenticate()
-{
-    int rc = libssh2_userauth_password(session, userName.c_str(),
-                                       password.c_str());
-
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-    {
-        return STILL_WORKING;
-    }
-
-    if (rc)
-    {
-        throw std::logic_error("Error in authentication");
-    }
-
-    return WORK_DONE;
-}
-
-TestSSH::state TestSSH::DoCreateChannel()
-{
-    channel = libssh2_channel_open_session(session);
-
-    if (channel == nullptr)
-    {
-        int rc = libssh2_session_last_error(session, nullptr, nullptr, 0);
-
-        if (rc == LIBSSH2_ERROR_EAGAIN)
-        {
-            return STILL_WORKING;
-        }
-        else
-        {
-            throw std::logic_error("Error opening channel");
-        }
-    }
-
-    return WORK_DONE;
-}
-
-TestSSH::state TestSSH::DoExecute()
-{
-    int rc = libssh2_channel_exec(channel, command.c_str());
-
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-    {
-        return STILL_WORKING;
-    }
-
-    if (rc)
-    {
-        throw std::logic_error("Error executing command");
-    }
-
-    return WORK_DONE;
-}
-
-TestSSH::state TestSSH::DoGetResult()
-{
-    char buffer[0x4001];
-    int rc = libssh2_channel_read(channel, buffer, sizeof(buffer)-1);
-
-    if (rc > 0)
-    {
-        // BUFFER IS NOT AN SZ-STRING, SO WE TURN IT INTO ONE
-        buffer[rc] = '\0';
-        string str = buffer;
-        cout << str << endl;
-
-        // WE'RE NOT FINISHED UNTIL WE READ 0
-        return STILL_WORKING;
-    }
-
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-    {
-        return STILL_WORKING;
-    }
-
-    if (rc)
-    {
-        throw std::logic_error("Error getting execution result");
-    }
-
-    return WORK_DONE;
-}
-
-TestSSH::state TestSSH::DoCloseChannel()
-{
-    int rc = libssh2_channel_close(channel);
-
-    if (rc == LIBSSH2_ERROR_EAGAIN)
-    {
-        return STILL_WORKING;
-    }
-
-    if (rc)
-    {
-        throw std::logic_error("Error closing channel");
-    }
-
-    return WORK_DONE;
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wwrite-strings"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-void TestSSH::Cleanup()
-{
-    int exitcode = libssh2_channel_get_exit_status( channel );
-    char *buf =
-            static_cast<char*>("A buffer for getting the exit signal, if any");
-    libssh2_channel_get_exit_signal(channel, &buf, nullptr, nullptr,
-                                    nullptr, nullptr, nullptr);
-
-    if (buf == nullptr)
-    {
-        cout << "No signal" << endl;
-    }
-    else
-    {
-        string str = buf;
-        cout << (str.length() == 0 ? "No signal description" : str) << endl;
-    }
-
-    libssh2_channel_free(channel);
-    channel = nullptr;
-}
-#pragma GCC diagnostic pop
-
-int main(int argc, char *argv[])
-{
-    string hostname("127.0.0.1");
-    string commandline("pwd");
-    string username("user");
-    string password("********"); // STRONG PASSWORD :)
-
-    if (argc > 1)
-    {
-        hostname = argv[1];
-    }
-
-    if (argc > 2)
-    {
-        username = argv[2];
-    }
-
-    if (argc > 3) {
-        password = argv[3];
-    }
-
-    if (argc > 4) {
-        commandline = argv[4];
-    }
-
-    int rc = libssh2_init (0);
-    if (rc != 0) {
-        fprintf (stderr, "libssh2 initialization failed (%d)\n", rc);
-        return 1;
-    }
-
-    try
-    {
-        TestSSH tssh;
-        tssh.Connect(hostname, username, password);
-        tssh.ExecuteCommand(commandline);
-    }
-    catch (std::exception& ex)
-    {
-        cout << ex.what() << endl;
-    }
-
-    libssh2_exit();
-    return 0;
-}//*/
 
 
 

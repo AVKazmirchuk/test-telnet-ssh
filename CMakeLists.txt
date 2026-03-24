@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # Задать имя для проекта, версию, название языка
-project(test_telnet_ssh-solution VERSION 1.0.0  LANGUAGES CXX)
+project(test_telnet_ssh-solution VERSION 1.0.0  LANGUAGES C CXX)
 
 # Установить стандарт C++
 set(CMAKE_CXX_STANDARD 20)
@@ -28,13 +28,13 @@ LIST(APPEND Include_Directories ${CMAKE_SOURCE_DIR}/src)
 set(Boost_INCLUDE_DIR "C:\\boost_1_87_0")
 find_package(Boost REQUIRED)
 
-find_package(libssh2 REQUIRED)
+#find_package(libssh2 REQUIRED)
 
 # В зависимости от добавления библиотеки в проект, закомментировать-раскомментировать if-endif и find_package
-#find_package(telnetpp REQUIRED)
-#if (NOT TARGET telnetpp)
-#    add_subdirectory(./libraries/telnetpp-4.0.0)
-#endif()
+#find_package(libssh2 REQUIRED)
+if (NOT TARGET libssh2)
+    add_subdirectory(./libraries/libssh2-libssh2-1.11.1)
+endif()
 
 add_subdirectory(src)
 
