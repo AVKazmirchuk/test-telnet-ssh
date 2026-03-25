@@ -77,8 +77,16 @@ https://habr.com/ru/articles/726714/
 https://github.com/makstamoian/ping/blob/master/main.cpp
 https://github.com/makstamoian/traceroute/blob/master/main.cpp
 https://s5.hpc.name/thread/v130/70080/ping-s-ispolzovaniem-biblioteki-icmp-dll-v-c.html
-https://s5.hpc.name/thread/v130/70080/ping-s-ispolzovaniem-biblioteki-icmp-dll-v-c.html
 https://learn.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking
 https://www.boost.org/doc/libs/latest/doc/html/boost_asio/overview/networking/protocols.html
 https://telegra.ph/Pishem-prostoj-sniffer-na-C-06-23
 https://www.cyberforum.ru/cpp-networks/thread2457279.html
+https://evileg.com/ru/post/167/
+https://www.cyberforum.ru/cpp-networks/thread1125443.html
+https://learn.microsoft.com/ru-ru/windows/win32/api/icmpapi/nf-icmpapi-icmpsendecho?redirectedfrom=MSDN
+https://github.com/pocoproject/poco/blob/main/Net/samples/Ping/src/Ping.cpp
+https://wimsworld.wordpress.com/2022/12/17/c-ipv4-ping-code-example/
+https://www.cyberguru.ru/sources/cpp-builder/network/iskhodnik-pinga-ping.html
+http://www.naughter.com/ping.html
+https://libtins.github.io/examples/traceroute/
+https://ainur-khakimov.ru/Посты/2020-07-05-ping-in-c
