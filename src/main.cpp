@@ -1,3 +1,91 @@
+#include <stdio.h>
+#include <winsock2.h>
+#include <iostream>
+#include <windows.h>
+#include <iphlpapi.h>
+#include <icmpapi.h>
+
+#pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "ws2_32.lib")
+
+HMODULE hndlIcmp = ::LoadLibraryA("icmp.dll");
+
+int main() {
+
+
+    // Инициализация WinSock
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+    // Создаем ICMP файл
+    HANDLE hIcmpFile = IcmpCreateFile();
+    if (hIcmpFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Ошибка создания ICMP файла\n";
+        return 1;
+    }
+
+    // Адрес для пинга
+    const char* ipAddr = "8.8.8.8";  // Google DNS для примера
+    IPAddr ip = inet_addr(ipAddr);
+
+    char sendData[] = "Ping Data";
+    DWORD replySize = sizeof(ICMP_ECHO_REPLY) + sizeof(sendData);
+    LPVOID replyBuffer = (VOID*)malloc(replySize);
+
+    // Отправляем запрос ping
+    DWORD dwRetVal = IcmpSendEcho(hIcmpFile, ip, sendData, sizeof(sendData), NULL, replyBuffer, replySize, 1000);
+
+    if (dwRetVal > 0) {
+        PICMP_ECHO_REPLY pEchoReply = (PICMP_ECHO_REPLY)replyBuffer;
+        std::cout << "Ответ от " << ipAddr << ": "
+                  << "Время=" << pEchoReply->RoundTripTime << "мс "
+                  << "TTL=" << (int)pEchoReply->Options.Ttl << std::endl;
+    } else {
+        std::cerr << "Запрос ping не удался.\n";
+    }
+
+    // Закрываем ICMP файл и очищаем ресурсы
+    IcmpCloseHandle(hIcmpFile);
+    free(replyBuffer);
+    WSACleanup();
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if 0
 /* Copyright (C) The libssh2 project and its contributors.
  *
  * Sample showing how to use libssh2 to execute a command remotely.
@@ -30,16 +118,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
-#include <winsock2.h>
+//#include <winsock2.h>
 
 
 
-static const char *hostname = "52.1.193.111";
-static const char *commandline = "uptime";
+static const char *hostname = "10.178.18.4"; //10.178.18.4
+static const char *commandline = "sh run";
 static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
 static const char *privkey = "/home/username/.ssh/id_rsa";
-static const char *username = "user";
-static const char *password = "password";
+static const char *username = "admin";
+static const char *password = "cdtn0a0h";
 
 static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 {
@@ -80,7 +168,7 @@ static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 
 int main(int argc, char *argv[])
 {
-std::cout << "qqq";
+
     uint32_t hostaddr;
     libssh2_socket_t sock;
     struct sockaddr_in sin;
@@ -209,6 +297,7 @@ std::cout << "qqq";
             fprintf(stderr, "Authentication by password failed.\n");
             goto shutdown;
         }
+
     }
     else {
         /* Or by public key */
@@ -318,6 +407,7 @@ std::cout << "qqq";
 
     return 0;
 }
+#endif
 
 
 
