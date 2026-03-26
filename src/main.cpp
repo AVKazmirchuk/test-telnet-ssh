@@ -1,3 +1,296 @@
+
+
+
+
+
+
+#if 0
+//TraceRoute.cpp
+/*----------------------------------------------------------
+Function Description:
+         The program simply implements the tracert command function of the Windows operating system,
+         It can output the routing information of IP packets from this machine to the destination host.
+-----------------------------------------------------------*/
+#include <iostream>
+#include <iomanip>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+#include "TraceRoute.h"
+#pragma comment(lib,"ws2_32")
+using namespace std;
+
+int main()
+{
+    while(1)
+    {
+        /*Store IP*/
+        char ipString[100];
+        cout<<"TraceRoute:";
+        scanf("%s",ipString);
+        //char *ipString = "www.baidu.com";
+
+        /*Initialize winsock2 environment*/
+        WSADATA wsa;//A data structure. This structure is used to store the Windows Sockets data returned after the WSAStartup function is called
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)//Do the corresponding socket library binding, MAKEWORD(2,2) means use WINSOCK2 version
+        {
+            cerr << "\nFailed to initialize the WinSock2 DLL\n"<< "error code: "<< WSAGetLastError() << endl;//Cerr is usually used to output error messages and other output content that does not belong to normal logic
+            return -1;
+        }
+
+        /*Convert command line parameters to IP address*/
+        u_long ulDestIP = inet_addr(ipString);//Convert a dotted decimal IP into a long integer number (u_long type)
+
+        //cout<<"Test————"<<"Long integer number"<<ulDestIP<<endl;
+        if (ulDestIP == INADDR_NONE)//INADDR_NONE is a macro definition, representing an invalid IP address for IpAddress.
+        {
+            //Resolve by domain name when the conversion is unsuccessful
+            hostent* pHostent = gethostbyname(ipString);//Returns a pointer to the hostent structure containing the host name and address information corresponding to the given host name
+            if (pHostent)
+            {
+                ulDestIP = (*(in_addr*)pHostent->h_addr).s_addr;//in_addr is used to represent a 32-bit IPv4 address. /cout<<"Test————"<<"ip address"<<ulDestIP< <endl;
+
+                //Output screen information
+                cout << "\nTracing route to " << ipString
+                     << "[" << inet_ntoa(*(in_addr*)(&ulDestIP)) << "]"//Convert the network address into a "." dotted string format
+                     << "with a maximum of" << DEF_MAX_HOP << "hops.\n" << endl;//DEF_MAX_HOP maximum number of hops
+            }
+            else //Failed to resolve the host name
+            {
+                cerr << "\nCould not resolve the host name " << ipString << '\n'
+                     << "error code: " << WSAGetLastError() << endl;
+                WSACleanup();//Terminate the use of Winsock 2 DLL (Ws2_32.dll)
+                return -1;
+            }
+        }
+        else
+        {
+            //Output screen information
+            cout << "Tracing route to " << ipString
+                 << " with a maximum of " << DEF_MAX_HOP << " hops." << endl;
+        }
+        //Fill the destination Socket address
+//struct sockaddr_in Lewis;
+        // Lewis.sin_family = AF_INET;//Indicates the address type. For communication based on the TCP/IP transmission protocol, the value can only be AF_INET;
+        // Lewis.sin_port = htons(80);//Indicates the port number, for example: 21 or 80
+        // Lewis.sin_addr.s_addr = inet_addr("202.96.134.133");//represents a 32-bit IP address
+        // memset(Lewis.sin_zero,0,sizeof(Lewis.sin_zero));//means padding byte
+
+        sockaddr_in destSockAddr;//The address used to process network communications
+        ZeroMemory(&destSockAddr, sizeof(sockaddr_in));//Use 0 to fill a memory area
+        destSockAddr.sin_family = AF_INET;//sin_family;//Address family protocol cluster AF_INET (TCP/IP-IPv4)
+        destSockAddr.sin_addr.s_addr = ulDestIP;//s_addr 32-bit IPv4 address
+        //Create Raw Socket using ICMP protocol
+        SOCKET sockRaw = WSASocket(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL, 0, WSA_FLAG_OVERLAPPED);//Socket type: raw socket, IPPROTO_ICMP indicates that the ICMP header is constructed by the program, iFlags: socket property description
+        if (sockRaw == INVALID_SOCKET)//Invalid socket
+        {
+            cerr << "\nFailed to create a raw socket\n"
+                 << "error code: " << WSAGetLastError() << endl;
+            WSACleanup();
+            return -1;
+        }
+        //Set port properties
+        int iTimeout = DEF_ICMP_TIMEOUT;//3000ms
+        //cout<<"Test————"<<"TIMEOUT:"<<iTimeout<<endl;
+        if (setsockopt(sockRaw, SOL_SOCKET, SO_RCVTIMEO, (char*)&iTimeout, sizeof(iTimeout)) == SOCKET_ERROR)
+            //Set the options associated with a socket. Options may exist in the multi-layer protocol. In order to operate the socket layer options, the value of the layer should be specified as SOL_SOCKET
+            //The socket to be set or get the option, the protocol layer where the option is located, the name of the option that needs to be accessed (the operation of the socket automatically has a timeout), points to the buffer containing the new option value, and the length of the current option
+        {
+            cerr << "\nFailed to set recv timeout\n"
+                 << "error code: " << WSAGetLastError() << endl;
+            closesocket(sockRaw);
+            WSACleanup();
+            return -1;
+        }
+        //Create ICMP packet sending buffer and receiving buffer
+        char IcmpSendBuf[sizeof(ICMP_HEADER)+DEF_ICMP_DATA_SIZE];
+        memset(IcmpSendBuf, 0, sizeof(IcmpSendBuf));
+        char IcmpRecvBuf[MAX_ICMP_PACKET_SIZE];
+        memset(IcmpRecvBuf, 0, sizeof(IcmpRecvBuf));
+        //Fill the ICMP packet to be sent (header and data part)
+        ICMP_HEADER* pIcmpHeader = (ICMP_HEADER*)IcmpSendBuf;
+        pIcmpHeader->type = ICMP_ECHO_REQUEST;
+        pIcmpHeader->code = 0;
+        pIcmpHeader->id = (USHORT)GetCurrentProcessId();
+        memset(IcmpSendBuf+sizeof(ICMP_HEADER),'E', DEF_ICMP_DATA_SIZE);//Data is partially filled
+        //Start to detect routing
+        DECODE_RESULT stDecodeResult;
+        BOOL bReachDestHost = FALSE;
+        USHORT usSeqNo = 0;
+        int iTTL = 1;
+        int iMaxHop = DEF_MAX_HOP;
+        while (!bReachDestHost && iMaxHop--)
+        {
+            //Set the ttl field of the IP data header
+            setsockopt(sockRaw, IPPROTO_IP, IP_TTL, (char*)&iTTL, sizeof(iTTL));//raw socket with 0 (IPPROTO_IP). Used to receive any IP data packet. The checksum and protocol analysis are completed by the program itself.
+            //Output the current number of hops as the routing information serial number
+            cout << setw(3) << iTTL << flush; //setw(3) sets the field width, cout<<flush means that the content of the buffer is sent to cout immediately, and the output buffer is flushed.
+            //Fill in the remaining fields of the ICMP datagram
+            ((ICMP_HEADER*)IcmpSendBuf)->cksum = 0;
+            ((ICMP_HEADER*)IcmpSendBuf)->seq = htons(usSeqNo++);//Convert the unsigned short host byte order to the network byte order, exchange the high and low bits of a number, (e.g.: 12 34- -> 34 12)
+            ((ICMP_HEADER*)IcmpSendBuf)->cksum = GenerateChecksum((USHORT*)IcmpSendBuf, sizeof(ICMP_HEADER)+DEF_ICMP_DATA_SIZE);
+
+            //Record the serial number and current time
+            stDecodeResult.usSeqNo = ((ICMP_HEADER*)IcmpSendBuf)->seq;
+            stDecodeResult.dwRoundTripTime = GetTickCount();//Returns the number of milliseconds that have elapsed since the operating system was started, and is often used to determine the execution time of a method
+
+            //Send ICMP EchoRequest datagram
+            if (sendto(sockRaw, IcmpSendBuf, sizeof(IcmpSendBuf), 0, (sockaddr*)&destSockAddr, sizeof(destSockAddr)) == SOCKET_ERROR)
+            {
+                //If the destination host is unreachable, exit directly
+                if (WSAGetLastError() == WSAEHOSTUNREACH)
+                    cout << '/t' << "Destination host unreachable.\n"<< "\nTrace complete.\n" << endl;
+                closesocket(sockRaw);
+                WSACleanup();
+                return 0;
+            }
+            //Receive ICMP EchoReply datagram
+            //Because the received datagram may not be the datagram expected by the program, it needs to be received in a loop until the required data is received or timeout
+            sockaddr_in from;
+            int iFromLen = sizeof(from);
+            int iReadDataLen;
+            while (1)
+            {
+                //Wait for data to arrive
+                iReadDataLen = recvfrom(sockRaw, IcmpRecvBuf, MAX_ICMP_PACKET_SIZE, 0, (sockaddr*)&from, &iFromLen);
+                if (iReadDataLen != SOCKET_ERROR) //A data packet arrives
+                {
+                    //The decoded data packet, if the decoding is correct, jump out of the receiving loop and send the next EchoRequest packet
+                    if (DecodeIcmpResponse(IcmpRecvBuf, iReadDataLen, stDecodeResult))
+                    {
+                        if (stDecodeResult.dwIPaddr.s_addr == destSockAddr.sin_addr.s_addr)
+                            bReachDestHost = TRUE;
+                        cout <<'\t' << inet_ntoa(stDecodeResult.dwIPaddr) << endl;//Convert the network address into a "." dotted string format
+                        break;
+                    }
+                }
+                else if (WSAGetLastError() == WSAETIMEDOUT) //Receive timeout, print asterisk
+                {
+                    cout << setw(9) << '*' << '\t' << "Request timed out." << endl;
+                    break;
+                }
+                else
+                {
+                    cerr << "\nFailed to call recvfrom\n"
+                         << "error code: " << WSAGetLastError() << endl;
+                    closesocket(sockRaw);
+                    WSACleanup();
+                    return -1;
+                }
+            }
+            //TTL value plus 1
+            iTTL++;
+            //cout<<"Test————"<<iTTL<<endl;
+        }
+        //Output screen information
+        cout << "\nTrace complete.\n" << endl;
+        closesocket(sockRaw);
+        WSACleanup();
+    }
+    return 0;
+
+}
+/*Generate internet checksum*/
+USHORT GenerateChecksum(USHORT* pBuf, int iSize)// 16
+{
+    unsigned long cksum = 0;//32
+    while (iSize>1)//40
+    {
+        cksum += *pBuf++;
+        iSize -= sizeof(USHORT);
+    }
+    if (iSize)
+        cksum += *(UCHAR*)pBuf;//8
+    //printf("Test——cksum——Test:%x\n",cksum);
+    //printf("Test——cksum>>16——Test:%x\n",cksum>>16);
+    //printf("Test——cksum & 0xffff——Test:%x\n",cksum & 0xffff);
+    cksum = (cksum >> 16) + (cksum & 0xffff);
+    //printf("Test——cksum——Test:%x\n",cksum);
+    //printf("Test——cksum>>16——Test:%x\n",cksum>>16);
+    cksum += (cksum >> 16);
+    //printf("Test——cksum——Test:%x\n",cksum);
+    //printf("Test——(USHORT)(~cksum)——Test:%x\n",(USHORT)(~cksum));
+    return (USHORT)(~cksum);//~ bitwise reverse
+}
+
+/*Decoded datagram*/
+BOOL DecodeIcmpResponse(char* pBuf, int iPacketSize, DECODE_RESULT& stDecodeResult)
+{
+    //Check the validity of the datagram size
+    IP_HEADER* pIpHdr = (IP_HEADER*)pBuf;
+    int iIpHdrLen = pIpHdr->hdr_len * 4;//unit 4 bytes
+    if (iPacketSize < (int)(iIpHdrLen+sizeof(ICMP_HEADER)))
+        return FALSE;
+    //Check the id field and serial number according to the ICMP packet type to determine whether it is the Icmp packet that the program should receive
+    ICMP_HEADER* pIcmpHdr = (ICMP_HEADER*)(pBuf+iIpHdrLen);
+    USHORT usID, usSquNo;//ICMP header identifier and serial number
+    if (pIcmpHdr->type == ICMP_ECHO_REPLY)
+    {
+        usID = pIcmpHdr->id;
+        usSquNo = pIcmpHdr->seq;
+    }
+    else if(pIcmpHdr->type == ICMP_TIMEOUT)
+    {
+        char* pInnerIpHdr = pBuf+iIpHdrLen+sizeof(ICMP_HEADER); //IP header in the payload
+        int iInnerIPHdrLen = ((IP_HEADER*)pInnerIpHdr)->hdr_len * 4;//IP header length in the payload
+        ICMP_HEADER* pInnerIcmpHdr = (ICMP_HEADER*)(pInnerIpHdr+iInnerIPHdrLen);//ICMP header in the payload
+        usID = pInnerIcmpHdr->id;
+        usSquNo = pInnerIcmpHdr->seq;
+    }
+    else
+        return FALSE;
+    if (usID != (USHORT)GetCurrentProcessId() || usSquNo !=stDecodeResult.usSeqNo)
+        return FALSE;
+    //Process the ICMP datagram received correctly
+    if (pIcmpHdr->type == ICMP_ECHO_REPLY ||
+        pIcmpHdr->type == ICMP_TIMEOUT)
+    {
+        //Return the decoding result
+        stDecodeResult.dwIPaddr.s_addr = pIpHdr->sourceIP;
+        stDecodeResult.dwRoundTripTime = GetTickCount() - stDecodeResult.dwRoundTripTime;
+        //Print screen information
+        if (stDecodeResult.dwRoundTripTime)
+            cout << setw(6) << stDecodeResult.dwRoundTripTime << " ms" << flush;
+        else
+            cout << setw(6) << "<1" << " ms" << flush;
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #if 0
 #include "DNSResolver.h"
 #include "ConfigManager.h"
@@ -49,6 +342,7 @@ int main(int argc, char* argv[])
 
 
 
+#if 0
 #define _WIN32_WINNT 0x0600  // Ensure Windows 7+ API availability
 
 #include <iostream>
@@ -353,7 +647,7 @@ int main()
 
     return 0;
 }
-
+#endif
 
 
 
