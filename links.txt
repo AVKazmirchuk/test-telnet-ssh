@@ -90,3 +90,12 @@ https://www.cyberguru.ru/sources/cpp-builder/network/iskhodnik-pinga-ping.html
 http://www.naughter.com/ping.html
 https://libtins.github.io/examples/traceroute/
 https://ainur-khakimov.ru/Посты/2020-07-05-ping-in-c
+
+
+
+https://github.com/suraj-d-sun/NslookupTool_C_plus_plus/blob/main/src/DNSResolver.cpp
+https://stackoverflow.com/questions/12328093/dns-lookup-in-c-c
+https://cplusplus.com/forum/general/9785/
+https://github.com/rachanapaithankar/cpp-dns-resolver
+
+

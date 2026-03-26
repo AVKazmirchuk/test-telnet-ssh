@@ -1,57 +1,620 @@
-#include <stdio.h>
-#include <winsock2.h>
+#if 0
+#include "DNSResolver.h"
+#include "ConfigManager.h"
 #include <iostream>
-#include <windows.h>
-#include <iphlpapi.h>
-#include <icmpapi.h>
 
-#pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "ws2_32.lib")
+using namespace std;
 
-HMODULE hndlIcmp = ::LoadLibraryA("icmp.dll");
+//@brief Main function that runs the DNS lookup tool.
+int main(int argc, char* argv[])
+{
+    ConfigManager config(argc, argv);
 
-int main() {
-
-
-    // Инициализация WinSock
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-
-    // Создаем ICMP файл
-    HANDLE hIcmpFile = IcmpCreateFile();
-    if (hIcmpFile == INVALID_HANDLE_VALUE) {
-        std::cerr << "Ошибка создания ICMP файла\n";
+    // Retrieve the domain name from the configuration
+    string domain = config.getConfig("domain");
+    if (domain.empty())
+    {
+        cerr << "Usage: main domain=<domain_name>" << endl;
         return 1;
     }
 
-    // Адрес для пинга
-    const char* ipAddr = "8.8.8.8";  // Google DNS для примера
-    IPAddr ip = inet_addr(ipAddr);
+    DNSResolver dnsResolver;
+    auto results = dnsResolver.resolveDomain(domain);  // Perform the domain resolution and store the results
+    dnsResolver.logResults(domain, results);   // Log the IP's for the resolved domain
 
-    char sendData[] = "Ping Data";
-    DWORD replySize = sizeof(ICMP_ECHO_REPLY) + sizeof(sendData);
-    LPVOID replyBuffer = (VOID*)malloc(replySize);
+    return 0;
+}
+#endif
 
-    // Отправляем запрос ping
-    DWORD dwRetVal = IcmpSendEcho(hIcmpFile, ip, sendData, sizeof(sendData), NULL, replyBuffer, replySize, 1000);
 
-    if (dwRetVal > 0) {
-        PICMP_ECHO_REPLY pEchoReply = (PICMP_ECHO_REPLY)replyBuffer;
-        std::cout << "Ответ от " << ipAddr << ": "
-                  << "Время=" << pEchoReply->RoundTripTime << "мс "
-                  << "TTL=" << (int)pEchoReply->Options.Ttl << std::endl;
-    } else {
-        std::cerr << "Запрос ping не удался.\n";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#define _WIN32_WINNT 0x0600  // Ensure Windows 7+ API availability
+
+#include <iostream>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <vector>
+#include <string>
+#include <stdexcept>
+#include <limits>
+#include <memory>
+
+// Links the Winsock2 library for networking functions
+#pragma comment(lib, "Ws2_32.lib")
+
+// RAII wrapper to initialize and clean up Winsock automatically
+class WinsockInitializer
+{
+public:
+    // Constructor
+    WinsockInitializer()
+    {
+        // Starts Winsock v2.2; throws an error if initialization fails
+        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+        {
+            throw std::runtime_error("WSAStartup failed.");
+        }
     }
 
-    // Закрываем ICMP файл и очищаем ресурсы
-    IcmpCloseHandle(hIcmpFile);
-    free(replyBuffer);
-    WSACleanup();
+    // Destructor
+    ~WinsockInitializer()
+    {
+        WSACleanup();
+    }
+
+private:
+    // Structure to hold Winsock data
+    WSADATA wsaData;
+};
+
+// This class provides methods to resolve domain names to IP addresses and perform reverse DNS lookups
+// It uses the Winsock API to fetch network information
+class DNSResolver
+{
+public:
+
+    /**
+     * Resolves the given domain name to its IP addresses.
+     * @param[in] domain The domain name to resolve (e.g., "google.com").
+     * @param[in] family Address family (AF_INET for IPv4, AF_INET6 for IPv6, AF_UNSPEC for both).
+     */
+    void resolveDNS(const std::string& domain, int family = AF_UNSPEC)
+    {
+        std::cout << "\nResolving: " << domain << "\n";
+        struct addrinfo hints = {}, *res = nullptr;
+
+        // Specifies whether to resolve for IPv4, IPv6, or both
+        hints.ai_family = family;
+
+        // Sets the socket type to TCP
+        hints.ai_socktype = SOCK_STREAM;
+
+        // Perform DNS lookup
+        int status = getaddrinfo(domain.c_str(), nullptr, &hints, &res);
+        if (status != 0)
+        {
+            std::cerr << "Error: Could not resolve " << domain << ". " << gai_strerror(status) << "\n";
+            return;
+        }
+
+        // Automatically frees addrinfo to prevent memory leaks and ensure exception safety
+        std::unique_ptr<struct addrinfo, decltype(&freeaddrinfo)> res_ptr(res, freeaddrinfo);
+
+        // Buffer to store the resolved IP address
+        char ipStr[NI_MAXHOST];
+
+        std::cout << "Addresses:\n";
+
+        // Iterate through all resolved addresses and print them
+        for (struct addrinfo* p = res_ptr.get(); p != nullptr; p = p->ai_next)
+        {
+            // Variable to hold the length of the IP string
+            DWORD ipStrLen = NI_MAXHOST;
+
+            // Convert the resolved address into a human-readable format
+            if (WSAAddressToStringA(p->ai_addr, p->ai_addrlen, nullptr, ipStr, &ipStrLen) == 0)
+            {
+                std::cout << "  " << ipStr << "\n";
+            }
+            else
+            {
+                std::cerr << "Warning: Failed to convert address. Skipping...\n";
+            }
+        }
+    }
+
+    /**
+     * Perform a reverse DNS lookup to find the hostname for a given IP address.
+     * @param[in] ip The IPv4 address to resolve.
+     */
+    void reverseDNSLookup(const std::string& ip)
+    {
+        std::cout << "\nReverse Lookup: " << ip << "\n";
+
+        // Structure to store the IP address information
+        struct sockaddr_in sa;
+
+        // Specify that the address belongs to the IPv4 family
+        sa.sin_family = AF_INET;
+
+        // Convert the IP string to a network address format
+        sa.sin_addr.s_addr = inet_addr(ip.c_str());
+
+        // Validate if the IP format is correct
+        if (sa.sin_addr.s_addr == INADDR_NONE)
+        {
+            std::cerr << "Invalid IP format. Please enter a valid IPv4 address.\n";
+            return;
+        }
+
+        char host[NI_MAXHOST];
+
+        // Perform reverse DNS lookup to get the domain name
+        if (getnameinfo((struct sockaddr*)&sa, sizeof(sa), host, NI_MAXHOST, nullptr, 0, NI_NAMEREQD) == 0)
+        {
+            std::cout << "Resolved Hostname: " << host << "\n";
+        }
+        else
+        {
+            std::cerr << "Reverse lookup failed for " << ip << "\n";
+        }
+    }
+
+    /**
+     * Resolves multiple domain names sequentially.
+     * @param[in] domains A list of domain names to resolve.
+     * @param[in] family Address family (IPv4, IPv6, or both).
+     */
+    void resolveMultipleDomains(const std::vector<std::string>& domains, int family = AF_UNSPEC)
+    {
+        for (const auto& domain : domains)
+        {
+            resolveDNS(domain, family);
+        }
+    }
+};
+
+// This class handles user input, ensuring valid numerical input and choices
+// It provides methods for selecting an option and choosing an address family
+class UserInputHandler
+{
+public:
+
+    /**
+     * Prompts the user to enter a numerical choice.
+     * Ensures valid integer input and prevents non-numeric or invalid characters.
+     *
+     * @return The validated integer choice entered by the user.
+     */
+    int getUserChoice()
+    {
+        int choice;
+        while (true)
+        {
+            // Display Options and Prompt the user for input
+            try
+            {
+                std::cin >> choice;
+
+                if (std::cin.fail())
+                {
+                    throw std::invalid_argument("Invalid input. Please enter a number.");
+                }
+
+                // Clear any remaining input in the buffer to prevent unintended behavior
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                return choice;
+            }
+                // Handle invalid input by resetting the input stream and displaying an error message
+            catch (const std::exception& e)
+            {
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cerr << e.what() << "\n";
+            }
+        }
+    }
+
+    /**
+     * Prompts the user to select an address family for network communication.
+     * Valid options:
+     *   1 - IPv4 only
+     *   2 - IPv6 only
+     *   3 - Both (default)
+     *
+     * @return The corresponding address family (AF_INET for IPv4, AF_INET6 for IPv6, AF_UNSPEC for both).
+     */
+    int getFamilyChoice()
+    {
+        int family;
+        while (true)
+        {
+            // Display options and prompt the user to select an address family
+            try
+            {
+                std::cout << "Select Address Family:\n";
+                std::cout << "1. IPv4 only\n";
+                std::cout << "2. IPv6 only\n";
+                std::cout << "3. Both (default)\n";
+                std::cout << "Enter choice: ";
+                std::cin >> family;
+
+                if (std::cin.fail() || (family < 1 || family > 3))
+                {
+                    throw std::invalid_argument("Invalid input. Enter 1, 2, or 3.");
+                }
+
+                // Clear any extra input and return the corresponding address family
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                if (family == 1) return AF_INET;
+                if (family == 2) return AF_INET6;
+                return AF_UNSPEC;
+
+            }
+                // Handle invalid input by resetting the input stream and displaying an error message
+            catch (const std::exception& e)
+            {
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cerr << e.what() << "\n";
+            }
+        }
+    }
+};
+
+int main()
+{
+    try
+    {
+        WinsockInitializer winsock;  // RAII ensures WSACleanup is called
+        DNSResolver resolver;
+        UserInputHandler inputHandler;
+
+        // Display menu options for the user
+        std::cout << "1. Resolve Domain\n";
+        std::cout << "2. Reverse DNS Lookup\n";
+        std::cout << "3. Resolve Multiple Domains\n";
+        std::cout << "Choose an option: ";
+
+        // Get user choice and validate input
+        int choice = inputHandler.getUserChoice();
+
+        // Get address family preference (IPv4, IPv6, or both)
+        if (choice == 1)
+        {
+            // Resolve a single domain name
+            std::string domain;
+            std::cout << "Enter domain: ";
+            std::getline(std::cin, domain);
+
+            // Get address family preference (IPv4, IPv6, or both)
+            int family = inputHandler.getFamilyChoice();
+            resolver.resolveDNS(domain, family);
+        }
+        else if (choice == 2)
+        {
+            // Perform reverse DNS lookup for an IP address
+            std::string ip;
+            std::cout << "Enter IP address: ";
+            std::getline(std::cin, ip);
+            resolver.reverseDNSLookup(ip);
+        }
+        else if (choice == 3)
+        {
+            // Resolve multiple domain names
+            int count;
+            std::cout << "Enter number of domains: ";
+            count = inputHandler.getUserChoice();
+
+            std::vector<std::string> domains(count);
+
+            // Collect domain names from the user
+            for (int i = 0; i < count; ++i)
+            {
+                std::cout << "Enter domain " << (i + 1) << ": ";
+                std::getline(std::cin, domains[i]);
+            }
+
+            // Get address family preference
+            int family = inputHandler.getFamilyChoice();
+            resolver.resolveMultipleDomains(domains, family);
+        }
+        else
+        {
+            std::cerr << "Invalid choice. Exiting.\n";
+        }
+    }
+    catch (const std::exception& e)
+    {
+        // Handle any exceptions thrown during execution
+        std::cerr << "Error: " << e.what() << "\n";
+    }
+
     return 0;
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if 0
+//#include "stdafx.h"
+
+#include <stdio.h>
+#include <WINSOCK2.H>
+#include <stdlib.h>
+#include <conio.h>
+#include <iostream>
+
+
+
+typedef struct tagIPINFO
+{
+    u_char Ttl; // Time To Live
+    u_char Tos; // Type Of Service
+    u_char IPFlags; // IP flags
+    u_char OptSize; // Size of options data
+    u_char FAR *Options; // Options data buffer
+}IPINFO, *PIPINFO;
+
+
+typedef struct tagICMPECHO
+{
+    u_long Source; // Source address
+    u_long Status; // IP status
+    u_long RTTime; // Round trip time in milliseconds
+    u_short DataSize; // Reply data size
+    u_short Reserved; // Unknown
+    void FAR *pData; // Reply data buffer
+    IPINFO ipInfo; // Reply options
+}ICMPECHO, *PICMPECHO;
+
+
+
+
+// ICMP.DLL Export Function Pointers
+HANDLE (WINAPI *pIcmpCreateFile)(VOID);
+BOOL (WINAPI *pIcmpCloseHandle)(HANDLE);
+DWORD (WINAPI *pIcmpSendEcho)
+        (HANDLE,DWORD,LPVOID,WORD,PIPINFO,LPVOID,DWORD,DWORD);
+
+
+//
+//
+int main(int argc, char **argv)
+{
+    WSADATA wsaData; // WSADATA
+    ICMPECHO icmpEcho; // ICMP Echo reply buffer
+    HMODULE hndlIcmp; // LoadLibrary() handle to ICMP.DLL
+    HANDLE hndlFile; // Handle for IcmpCreateFile()
+    LPHOSTENT pHost; // Pointer to host entry structure
+    struct in_addr iaDest; // Internet address structure
+    DWORD dwAddress; // IP Address
+    IPINFO ipInfo; // IP Options structure
+    int nRet; // General use return code
+    DWORD dwRet; // DWORD return code
+    int x;
+
+
+    // Check arguments
+    /*if (argc != 2)
+    {
+        fprintf(stderr,"\nSyntax: ping.exe [HostName]Or[IPAddress]\n");
+        return 1;
+    }*/
+
+
+
+    // Dynamically load the ICMP.DLL
+    hndlIcmp = LoadLibrary("ICMP.DLL");
+    if (hndlIcmp == NULL)
+    {
+        fprintf(stderr,"\nCould not load ICMP.DLL\n");
+        return 1;
+    }
+    // Retrieve ICMP function pointers
+    pIcmpCreateFile = (HANDLE (WINAPI *)(void))
+            GetProcAddress(hndlIcmp,"IcmpCreateFile");
+    pIcmpCloseHandle = (BOOL (WINAPI *)(HANDLE))
+            GetProcAddress(hndlIcmp,"IcmpCloseHandle");
+    pIcmpSendEcho = (DWORD (WINAPI *)
+            (HANDLE,DWORD,LPVOID,WORD,PIPINFO,LPVOID,DWORD,DWORD))
+            GetProcAddress(hndlIcmp,"IcmpSendEcho");
+    // Check all the function pointers
+    if (pIcmpCreateFile == NULL ||
+        pIcmpCloseHandle == NULL ||
+        pIcmpSendEcho == NULL)
+    {
+        fprintf(stderr,"\nError getting ICMP proc address\n");
+        FreeLibrary(hndlIcmp);
+        return 1;
+    }
+
+    printf("1. Dll loaded... ok \n");
+
+    // Init WinSock
+    nRet = WSAStartup(0x0101, &wsaData );
+    if (nRet)
+    {
+        fprintf(stderr,"\nWSAStartup() error: %d\n", nRet);
+        WSACleanup();
+        FreeLibrary(hndlIcmp);
+        return 1;
+    }
+    printf("2. Init WinSock  ...ok\n");
+
+    // Check WinSock version
+    if (0x0101 != wsaData.wVersion)
+    {
+        fprintf(stderr,"\nWinSock version 1.1 not supported\n");
+        WSACleanup();
+        FreeLibrary(hndlIcmp);
+        return 1;
+    }
+
+
+    // Lookup destination
+    // Use inet_addr() to determine if we're dealing with a name
+    // or an address
+    printf("3. Getting WinSock version 1.1 ...ok\n");
+
+    iaDest.s_addr = inet_addr("169.254.0.1");
+    dwAddress=inet_addr(argv[1]);
+    printf("4. Getting ip address...\n");
+
+    if (dwAddress == INADDR_NONE)
+    {
+        printf("5. No ip looking for hostname ... \n");
+        pHost = gethostbyname(argv[1]);
+        if (pHost==NULL)
+        {
+            printf("5. Warning! Can't find host name...ok\nPress any key to exit.\n");
+            getch();
+            return 1;
+        }
+
+        CopyMemory( &dwAddress,pHost->h_addr_list[0],pHost->h_length);
+        if (dwAddress == INADDR_NONE)
+        {
+            printf("5. Warning! Can't find host name.\nPress any key to exit.\n");
+            getch();
+            return 1;
+        }
+
+    }
+    else
+    {    printf("5.1. Address ok)\n");
+
+        //pHost = gethostbyaddr(inet_addr("169.254.0.1"),
+        //              sizeof(struct in_addr), AF_INET);
+    }
+    printf("6. Host != NULL ...ok\n");
+    if (pHost == NULL)
+    {
+        fprintf(stderr, "\n%s not found\n", argv[1]);
+        WSACleanup();
+        FreeLibrary(hndlIcmp);
+        return 1;
+    }
+    printf("7. Data and functionst are ...ok \n");
+    printf("8./////////////////PING//////////////// \n");
+
+    // Tell the user what we're doing
+
+
+
+
+    // Copy the IP address
+
+    //CopyMemory( &dwAddress,pHost->h_addr_list[0],pHost->h_length); //inet_addr("169.254.0.3");
+    //  dwAddress=inet_addr("169.254.0.9");
+
+//         printf(" CopyMemory ok \n");
+
+    // Get an ICMP echo request handle
+    hndlFile = pIcmpCreateFile();
+    printf("pIcmpCreateFile() ... ok \n");
+    for (x = 0; x <5;x++)
+    {      // Set some reasonable default values
+        ipInfo.Ttl = 255;
+        ipInfo.Tos = 0;
+        ipInfo.IPFlags = 0;
+        ipInfo.OptSize = 0;
+        ipInfo.Options = NULL;
+        //icmpEcho.ipInfo.Ttl = 256;
+        // Reqest an ICMP echo
+
+        char buf[32] = "qazwsxedcrfvtgbyhnujmik,ol.p;/[";
+
+
+        dwRet = pIcmpSendEcho(
+                hndlFile, // Handle from IcmpCreateFile()
+                dwAddress, // Destination IP address
+                NULL, // Pointer to buffer to send
+                0, // Size of buffer in bytes
+                &ipInfo, // Request options
+                &icmpEcho, // Reply buffer
+                sizeof(struct tagICMPECHO),
+                5000); // Time to wait in milliseconds
+        printf("pIcmpSendEcho ...ok\n");
+        // Print the results
+        iaDest.s_addr = icmpEcho.Source;
+        printf("Reply from %s Time=%ldms TTL=%d\n",
+               inet_ntoa(iaDest),
+               icmpEcho.RTTime,
+               icmpEcho.ipInfo.Ttl);
+        std::cout << ", dataSize=" << icmpEcho.DataSize;
+        if (icmpEcho.Status)
+        {
+            printf("\nError: icmpEcho.Status=%ld\n",icmpEcho.Status);
+            //  return ;
+            break;
+        }
+    }
+    printf("9./////////////////PING//////////////// \n");
+    printf("Press any key to exit.\n");
+    // Close the echo request file handle
+    pIcmpCloseHandle(hndlFile);
+    FreeLibrary(hndlIcmp);
+    WSACleanup();
+    getch();
+
+    return 0;
+}
+#endif
 
 
 
