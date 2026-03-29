@@ -127,6 +127,10 @@ https://ostart.github.io/2021/06/22/snmpsim/
 https://learn.microsoft.com/en-us/windows/win32/api/_snmp/
 https://www.linux.org.ru/forum/admin/10367872
 https://www.ireasoning.com/downloadmibbrowserfree.php
+https://habr.com/ru/articles/578766/
+https://habr.com/ru/articles/578766/
+https://eltexalatau.kz/upload/iblock/62e/mes_configuration_and_monitoring_via_snmp_1.1.48.11_-2.5.48.11_-2.2.14.6.pdf
+https://docs.eltex-co.ru/pages/viewpage.action?pageId=593367282
 
 
 
