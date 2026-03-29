@@ -127,3 +127,12 @@ https://ostart.github.io/2021/06/22/snmpsim/
 https://learn.microsoft.com/en-us/windows/win32/api/_snmp/
 https://www.linux.org.ru/forum/admin/10367872
 https://www.ireasoning.com/downloadmibbrowserfree.php
+
+
+
+https://denizhalil.com/2024/12/11/build-cpp-port-scanner-tool/
+https://github.com/alexichab/port-scanner/blob/master/main.cpp
+https://codereview.stackexchange.com/questions/101250/scanning-for-open-ports
+https://s5.hpc.name/thread/x810/135221/kak-proverit-otkrytye-porty-s-pomoshchyu-c.html?__cf_chl_rt_tk=GrzZ4o6eSHHJkt8iil9RrcHGY29qSBw0NQZzeoq3Kl8-1774793011-1.0.1.1-DiQnOU_PjMf7l9nvVjOA7ukoAz_9xSNb9wN1j8QJlZc
+https://web.archive.org/web/20130603015007/http://nig.org.ua/2012/09/skaner-portov/
+https://habr.com/ru/articles/956704/
