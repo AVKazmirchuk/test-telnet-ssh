@@ -36,16 +36,17 @@ if (NOT TARGET libssh2)
     add_subdirectory(./libraries/libssh2-libssh2-1.11.1)
 endif()
 
-if (NOT TARGET snmp_pp)
-    add_subdirectory(./libraries/snmp++-3.6.3)
-endif()
+find_package(snmp++ CONFIG REQUIRED)
+#if (NOT TARGET snmp_pp)
+#    add_subdirectory(./libraries/snmp++-3.6.3)
+#endif()
 
 add_subdirectory(src)
 
 # Указать библиотеки, которые нужно использовать при компоновке заданной цели и/или её зависимостей
 target_link_libraries(${Application_Name} PRIVATE ws2_32)
 target_link_libraries(${Application_Name} PRIVATE libssh2::libssh2)
-target_link_libraries(${Application_Name} PRIVATE snmp_pp)
+target_link_libraries(${Application_Name} PRIVATE snmp++::snmp++)
 #target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
 
 
