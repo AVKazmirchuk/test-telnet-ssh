@@ -124,10 +124,10 @@ https://github.com/nikandfor/csnmp/blob/master/main.cpp
 https://habr.com/ru/companies/ruvds/articles/688314/
 https://programmersought.com/article/75019137084/?__cf_chl_rt_tk=I6BD5cHLUJvNDp18w2eE3w5O2tOJnqTCuI_3qkyB9sE-1774605382-1.0.1.1-hXajizi67mqsjS7hSASlpUsTu8BlOZ8ZY5iC4GXI5Y4
 https://ostart.github.io/2021/06/22/snmpsim/
-https://learn.microsoft.com/en-us/windows/win32/api/_snmp/
+https://learn.microsoft.com/
+en-us/windows/win32/api/_snmp/
 https://www.linux.org.ru/forum/admin/10367872
 https://www.ireasoning.com/downloadmibbrowserfree.php
-https://habr.com/ru/articles/578766/
 https://habr.com/ru/articles/578766/
 https://eltexalatau.kz/upload/iblock/62e/mes_configuration_and_monitoring_via_snmp_1.1.48.11_-2.5.48.11_-2.2.14.6.pdf
 https://docs.eltex-co.ru/pages/viewpage.action?pageId=593367282
@@ -140,3 +140,45 @@ https://codereview.stackexchange.com/questions/101250/scanning-for-open-ports
 https://s5.hpc.name/thread/x810/135221/kak-proverit-otkrytye-porty-s-pomoshchyu-c.html?__cf_chl_rt_tk=GrzZ4o6eSHHJkt8iil9RrcHGY29qSBw0NQZzeoq3Kl8-1774793011-1.0.1.1-DiQnOU_PjMf7l9nvVjOA7ukoAz_9xSNb9wN1j8QJlZc
 https://web.archive.org/web/20130603015007/http://nig.org.ua/2012/09/skaner-portov/
 https://habr.com/ru/articles/956704/
+
+
+switch (eltex):
+tcp: 22, 23, 80, 443
+udp: 67, 68, 123, 161, 520, 3784, 4784
+
+switch (cisco):
+tcp:
+udp:
+
+TFortis:
+tcp:
+udp:
+
+wi-fi:
+tcp:
+udp:
+
+pc:
+tcp: 135, 139, 445, 2701, 3389, 9010
+udp: 123, 137, 138, ...
+
+moxa:
+tcp: 23, 80, ...
+udp: 68, 161
+
+phone:
+tcp: 22, 53, 80, 5060
+udp: 38, 53, 5060
+
+camera:
+tcp: 80, 443, 554, 8000
+udp: 161, 1049
+
+pc (free):
+tcp: 3001, 4899
+udp:
+
+ups:
+tcp:
+udp:
+
