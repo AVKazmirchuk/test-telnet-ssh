@@ -1,0 +1,10 @@
+https://latl.ru/sysadm/networking/cisco/cisco-detect_port_by_mac_ip/
+https://bloodybart.livejournal.com/73731.html
+https://microsin.net/adminstuff/cisco/port-ip-host.html
+https://whostheman.wordpress.com/2009/04/05/ping-your-multicast-network/
+https://www.iana.org/assignments/multicast-addresses/multicast-addresses.xhtml#multicast-addresses-1
+
+
+
+1. определить адрес шлюза компьютера
+2. 
