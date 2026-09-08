@@ -12,6 +12,7 @@ public:
     Node()
     {
         currentNode = this;
+        //std::cout << currentNode << '\n';
     }
 
     Node(int in_step, int in_port) : step{in_step}, port{in_port}//TODO добавить для списка инициализации
@@ -21,25 +22,29 @@ public:
 
     void addToSameLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
+        Node* prevNodeTmp{currentNode->prevNode};
         currentNode->prevNode->nodes.emplace_back(in_step, in_port);
+        currentNode->prevNode->nodes.back().prevNode = prevNodeTmp;
+        //std::cout << (currentNode + 1)->step << ' ' << (currentNode + 1)->port << ' ' << (currentNode + 1)->prevNode->port << ' ' << (currentNode + 1)->final << '\n';
 
     }
 
     void addToAnotherLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
-
+        std::cout << currentNode << '\n';
         currentNode->nodes.emplace_back(in_step, in_port);
-        std::cout << currentNode->nodes[0].port;//.back();
+        std::cout << currentNode << '\n';
+        currentNode->nodes[0].prevNode = currentNode;
+        //std::cout << currentNode->nodes.front().port;//.back();
         //.prevNode = currentNode;std::cout << "!!!";
-
+        std::cout << "qaz" << '\n';
         currentNode = &currentNode->nodes[0];
-
+        std::cout << "wsx" << '\n';
+        std::cout << currentNode << '\n';
+        std::cout << currentNode->step << ' ' << currentNode->port << ' ' << currentNode->prevNode->port << ' ' << currentNode->final << '\n';
     }
 
-    static Node* getCurrentNode()
-    {
-        return currentNode;
-    }
+
 
     Node* getPrevNode()
     {
@@ -48,14 +53,23 @@ public:
 
     static void output(Node& in_node)
     {
-        for (Node& node : in_node.nodes)
+        /*for (Node& node : in_node.nodes)
         {
             std::cout << node.step << ' ' << node.port << ' ' << node.prevNode->port << ' ' << node.final << '\n';
-            if (!node.nodes.empty())
-            {
+
                 output(node);
-            }
-        }
+
+        }*/
+
+        std::cout << '\n';
+
+        std::cout << in_node.nodes[0].step << ' ' << in_node.nodes[0].port << ' ' << in_node.nodes[0].prevNode->port << ' ' << in_node.nodes[0].final << '\n';
+        std::cout << in_node.nodes[1].step << ' ' << in_node.nodes[1].port << ' ' << in_node.nodes[1].prevNode->port << ' ' << in_node.nodes[1].final << '\n';
+        std::cout << in_node.nodes[2].step << ' ' << in_node.nodes[2].port << ' ' << in_node.nodes[2].prevNode->port << ' ' << in_node.nodes[2].final << '\n';
+        std::cout << in_node.nodes[3].step << ' ' << in_node.nodes[3].port << ' ' << in_node.nodes[3].prevNode->port << ' ' << in_node.nodes[3].final << '\n';
+        std::cout << &in_node.nodes[0].nodes[0];
+        std::cout << in_node.nodes[0].nodes[0].step << ' ' << in_node.nodes[0].nodes[0].port << ' ' << in_node.nodes[0].nodes[0].prevNode->port << ' ' << in_node.nodes[0].nodes[0].final << '\n';
+        //std::cout << in_node.nodes[0].nodes[1].step << ' ' << in_node.nodes[0].nodes[1].port << ' ' << in_node.nodes[0].nodes[1].prevNode->port << ' ' << in_node.nodes[0].nodes[1].final << '\n';
     }
 
 private:
@@ -68,7 +82,7 @@ private:
 
     std::vector<Node> nodes{};
 
-    inline static Node* currentNode{};
+    Node* currentNode;
 
 
 
@@ -109,6 +123,7 @@ int main()
 {
     Node node;
 
+    //std::cout << &node << '\n';
 
 /*
     node1.nodes.push_back({12, 92, {}});
@@ -143,6 +158,9 @@ int main()
     //add(node1.nodes[1].nodes[0].nodes, 10, 82);
 
     Node::output(node);
+
+    std::cout << '\n';
+
 
     //std::cout << "Hello, World!" << std::endl;
 
