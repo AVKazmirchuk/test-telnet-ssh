@@ -9,25 +9,31 @@ class Node
 
 public:
 
-    Node() = default;
-
-    Node(int in_step, int in_port) : step{in_step}, port{in_port}
-    {}
-
-
-
-    Node* addToSameLevel(Node& node, int step, int port, Node* prevNode)//TODO добавить для списка инициализации
+    Node()
     {
+        currentNode = this;
+    }
+
+    Node(int in_step, int in_port) : step{in_step}, port{in_port}//TODO добавить для списка инициализации
+    {
+        currentNode = this;
+    }
+
+    void addToSameLevel(int in_step, int in_port)//TODO добавить для списка инициализации
+    {
+        currentNode->prevNode->nodes.emplace_back(in_step, in_port);
 
     }
 
-    void add(int in_step, int in_port)
+    void addToAnotherLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
-        nodes.emplace_back(in_step, in_port);
-        nodes.back().prevNode = this;
 
-        currentNode = &nodes[0];
-        //std::cout << "!!!";
+        currentNode->nodes.emplace_back(in_step, in_port);
+        std::cout << currentNode->nodes[0].port;//.back();
+        //.prevNode = currentNode;std::cout << "!!!";
+
+        currentNode = &currentNode->nodes[0];
+
     }
 
     static Node* getCurrentNode()
@@ -116,14 +122,17 @@ int main()
 */
     //std::cout << '\n';
 
-    node.add(0, 17);
-    node.add(0, 16);
-    node.add(0, 23);
-    node.add(0, 22);
+    node.addToAnotherLevel(0, 17);
 
-    Node::getCurrentNode()->add(2, 113);
-    Node::getCurrentNode()->getPrevNode()->add(2, 112);
+    node.addToSameLevel(0, 16);
+    node.addToSameLevel(0, 23);
+    node.addToSameLevel(0, 22);
 
+    //Node::getCurrentNode()->add(2, 113);
+    //Node::getCurrentNode()->getPrevNode()->add(2, 112);
+
+    node.addToAnotherLevel(2, 113);
+    node.addToSameLevel(2, 112);
 
 
     //std::cout << '\n';
@@ -141,4 +150,3 @@ int main()
 
     return 0;
 }
-
