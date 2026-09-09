@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include <vector>
+#include <list>
 
 
 
@@ -20,7 +21,7 @@ public:
         currentNode = this;
     }
 
-    void addToSameLevel(int in_step, int in_port)//TODO добавить для списка инициализации
+    void addToCurrentLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
         Node* prevNodeTmp{currentNode->prevNode};
         currentNode->prevNode->nodes.emplace_back(in_step, in_port);
@@ -29,19 +30,29 @@ public:
 
     }
 
-    void addToAnotherLevel(int in_step, int in_port)//TODO добавить для списка инициализации
+    void addToNewLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
         std::cout << currentNode << '\n';
         currentNode->nodes.emplace_back(in_step, in_port);
         std::cout << currentNode << '\n';
-        currentNode->nodes[0].prevNode = currentNode;
+        currentNode->nodes.front().prevNode = currentNode;
         //std::cout << currentNode->nodes.front().port;//.back();
         //.prevNode = currentNode;std::cout << "!!!";
         std::cout << "qaz" << '\n';
-        currentNode = &currentNode->nodes[0];
+        currentNode = &currentNode->nodes.front();
         std::cout << "wsx" << '\n';
         std::cout << currentNode << '\n';
         std::cout << currentNode->step << ' ' << currentNode->port << ' ' << currentNode->prevNode->port << ' ' << currentNode->final << '\n';
+
+
+    }
+
+    void nodeDone()
+    {
+        currentNode->final = true;
+
+        for (auto it{currentNode->prevNode->nodes.})
+
     }
 
 
@@ -53,26 +64,46 @@ public:
 
     static void output(Node& in_node)
     {
-        /*for (Node& node : in_node.nodes)
+        for (Node& node : in_node.nodes)
         {
+
             std::cout << node.step << ' ' << node.port << ' ' << node.prevNode->port << ' ' << node.final << '\n';
 
-                output(node);
+            output(node);
 
+        }
+
+        //std::cout << "size of in_node.nodes: " << in_node.nodes.size() << '\n';
+        //std::cout << "capacity of in_node.nodes: " << in_node.nodes.capacity() << '\n';
+        /*if (!in_node.nodes[11].nodes.empty())
+        {
+
+            std::cout << "Not empty!" << '\n';
         }*/
+
+        /*std::cout << "size of in_node.nodes[0].nodes: " << in_node.nodes.  [0].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[1].nodes: " << in_node.nodes[1].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[2].nodes: " << in_node.nodes[2].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[3].nodes: " << in_node.nodes[3].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[4].nodes: " << in_node.nodes[4].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[5].nodes: " << in_node.nodes[5].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[6].nodes: " << in_node.nodes[6].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[7].nodes: " << in_node.nodes[7].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[8].nodes: " << in_node.nodes[8].nodes.size() << '\n';
+        std::cout << "size of in_node.nodes[9].nodes: " << in_node.nodes[9].nodes.size() << '\n';
 
         std::cout << '\n';
 
         std::cout << in_node.nodes[0].step << ' ' << in_node.nodes[0].port << ' ' << in_node.nodes[0].prevNode->port << ' ' << in_node.nodes[0].final << '\n';
         std::cout << in_node.nodes[1].step << ' ' << in_node.nodes[1].port << ' ' << in_node.nodes[1].prevNode->port << ' ' << in_node.nodes[1].final << '\n';
         std::cout << in_node.nodes[2].step << ' ' << in_node.nodes[2].port << ' ' << in_node.nodes[2].prevNode->port << ' ' << in_node.nodes[2].final << '\n';
-        std::cout << in_node.nodes[3].step << ' ' << in_node.nodes[3].port << ' ' << in_node.nodes[3].prevNode->port << ' ' << in_node.nodes[3].final << '\n';
-        std::cout << &in_node.nodes[0].nodes[0];
-        std::cout << in_node.nodes[0].nodes[0].step << ' ' << in_node.nodes[0].nodes[0].port << ' ' << in_node.nodes[0].nodes[0].prevNode->port << ' ' << in_node.nodes[0].nodes[0].final << '\n';
+        std::cout << in_node.nodes[3].step << ' ' << in_node.nodes[3].port << ' ' << in_node.nodes[3].prevNode->port << ' ' << in_node.nodes[3].final << '\n';*/
+        //std::cout << &in_node.nodes[0].nodes[0];std::cout << "edc" << '\n';
+        //std::cout << in_node.nodes[0].nodes[0].step << ' ' << in_node.nodes[0].nodes[0].port << ' ' << in_node.nodes[0].nodes[0].prevNode->port << ' ' << in_node.nodes[0].nodes[0].final << '\n';
         //std::cout << in_node.nodes[0].nodes[1].step << ' ' << in_node.nodes[0].nodes[1].port << ' ' << in_node.nodes[0].nodes[1].prevNode->port << ' ' << in_node.nodes[0].nodes[1].final << '\n';
     }
 
-private:
+public:
 
     int step{};
     int port{};
@@ -80,16 +111,13 @@ private:
 
     bool final{};
 
-    std::vector<Node> nodes{};
+    std::list<Node> nodes{};
 
     Node* currentNode;
 
 
 
-    void setCurrentNode(Node* node)
-    {
-        currentNode = node;
-    }
+
 
 
 
@@ -99,23 +127,7 @@ private:
 
 
 
-/*std::vector<Node>& searchVector(std::vector<Node>& vec, int outPort)
-{
-    for (auto& node : vec)
-    {
-        if (node.port == outPort)
-        {
-            return node.nodes;
-        }
-        if (!node.nodes.empty())
-        {
 
-            searchVector(node.nodes, outPort);
-        }
-    }
-
-    return vec;
-}*/
 
 
 
@@ -137,18 +149,23 @@ int main()
 */
     //std::cout << '\n';
 
-    node.addToAnotherLevel(0, 17);
-
-    node.addToSameLevel(0, 16);
-    node.addToSameLevel(0, 23);
-    node.addToSameLevel(0, 22);
+    node.addToNewLevel(0, 17);
+    if (node.nodes.empty()) std::cout << "Empty!" << '\n';
+    std::cout << "After addToAnotherLevel: " << &node.nodes.front() << '\n';
+    node.addToCurrentLevel(0, 16);
+    node.addToCurrentLevel(0, 23);
+    node.addToCurrentLevel(0, 22);
 
     //Node::getCurrentNode()->add(2, 113);
     //Node::getCurrentNode()->getPrevNode()->add(2, 112);
 
-    node.addToAnotherLevel(2, 113);
-    node.addToSameLevel(2, 112);
+    node.addToNewLevel(2, 113);
+    if (node.nodes.front().nodes.empty()) std::cout << "Empty!" << '\n';
+    std::cout << "After addToAnotherLevel: " << &node.nodes.front().nodes.front() << '\n';
+    node.addToCurrentLevel(2, 112);
 
+    node.addToNewLevel(3, 131);
+    node.addToCurrentLevel(3, 132);
 
     //std::cout << '\n';
 
