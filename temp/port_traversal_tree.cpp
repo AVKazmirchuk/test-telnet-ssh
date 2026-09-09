@@ -47,12 +47,37 @@ public:
 
     }
 
-    void nodeDone()
+
+
+    int nodeDone()
     {
         currentNode->final = true;
 
-        for (auto it{currentNode->prevNode->nodes.})
+        bool lastNode{};
+        for (auto it{currentNode->prevNode->nodes.begin()}; it != currentNode->prevNode->nodes.end(); ++it)
+        {
+            if (currentNode == &*it)
+            {
+                if (++it != currentNode->prevNode->nodes.end())
+                {
+                    currentNode = &*(it);
 
+                } else
+                {
+                    lastNode = true;
+                }
+
+                break;
+            }
+        }
+
+        if (lastNode)
+        {
+            currentNode = currentNode->prevNode;
+            nodeDone();
+        }
+
+        return currentNode->port;
     }
 
 
