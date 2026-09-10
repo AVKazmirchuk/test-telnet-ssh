@@ -6,6 +6,8 @@
 
 class BypassingPorts;
 
+class Node;
+
 class NodesAndPorts
 {
 
@@ -85,7 +87,13 @@ public:
     {
         currentNode->nodes.emplace_back(in_step, in_port);
         currentNode->nodes.front().prevNode = currentNode;
-        currentNode = &currentNode->nodes.front();
+        currentNode->nodesAndPorts.
+                currentNode = &currentNode->nodes.front();
+    }
+
+    void addNodeAndPort(int in_node, int in_port)
+    {
+        currentNode->nodesAndPorts.addNodeAndPort(in_node, in_port);
     }
 
     int nodeDone()
