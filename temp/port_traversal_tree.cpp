@@ -4,26 +4,24 @@
 
 
 
-class BypassingPorts;
+struct Link
+{
+    int port1;
+    int port2;
+};
 
-class Node;
-
-class NodesAndPorts
+struct NodesAndPorts
 {
 
-public:
+    //NodesAndPorts() = default;
 
-    NodesAndPorts() = default;
+    //NodesAndPorts(int in_node) : node{in_node}
+    //{}
 
-    NodesAndPorts(int in_nodeID) : nodeID{in_nodeID}
-    {}
-
-    void addNodeAndPort(int in_node, int in_port)
+    /*void addNodeAndPort(int in_node, int in_port)
     {
-        nodesAndPorts.emplace_back(NodeAndPort{in_node, in_port});
-    }
-
-private:
+        nodesAndPorts.emplace_back<NodeAndPort>({in_node, in_port});
+    }*/
 
     struct NodeAndPort
     {
@@ -31,25 +29,19 @@ private:
         int port;
     };
 
-    int nodeID{};
+    int node{};
 
-    std::list<NodeAndPort> nodesAndPorts{};
-
+    std::list<NodeAndPort> nodesAndPorts;
 };
 
-class Node
+struct Node
 {
+    //Node() = default;
 
-public:
+    //Node(int in_step, int in_port) : step{in_step}, port{in_port}//TODO добавить для списка инициализации
+    //{}
 
-    Node() = default;
-
-    Node(int in_step, int in_port) : step{in_step}, port{in_port}//TODO добавить для списка инициализации
-    {}
-
-private:
-
-    friend BypassingPorts;
+    //friend BypassingPorts;
 
     int step{};
     int port{};
@@ -60,8 +52,7 @@ private:
 
     std::list<Node> nodes{};
 
-    NodesAndPorts nodesAndPorts;
-
+    std::list<NodesAndPorts> nodesAndPorts;
 };
 
 
@@ -76,24 +67,35 @@ public:
         currentNode = &node;
     }
 
+    BypassingPorts(int in_initialNode, std::list<NodesAndPorts>&& in_nodesAndPorts)
+    {
+        currentNode = &node;
+        addNodeAndPort(in_initialNode, std::move(in_nodesAndPorts));
+    }
+
     void addToCurrentLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
         Node* prevNodeTmp{currentNode->prevNode};
-        currentNode->prevNode->nodes.emplace_back(in_step, in_port);
+        currentNode->prevNode->nodes.emplace_back<Node>({in_step, in_port});
         currentNode->prevNode->nodes.back().prevNode = prevNodeTmp;
     }
 
     void addToNewLevel(int in_step, int in_port)//TODO добавить для списка инициализации
     {
-        currentNode->nodes.emplace_back(in_step, in_port);
+        currentNode->nodes.emplace_back<Node>({in_step, in_port});
         currentNode->nodes.front().prevNode = currentNode;
-        currentNode->nodesAndPorts.
-                currentNode = &currentNode->nodes.front();
+        currentNode = &currentNode->nodes.front();
     }
 
-    void addNodeAndPort(int in_node, int in_port)
+    void addNodeAndPort(int in_initialNode, std::list<NodesAndPorts>&& in_nodesAndPorts)//TODO сделать внешнюю функцию для создания списка
     {
-        currentNode->nodesAndPorts.addNodeAndPort(in_node, in_port);
+        initialNode = in_initialNode;
+        currentNode->nodesAndPorts = std::move(in_nodesAndPorts);
+    }
+
+    std::list<Link> run()
+    {
+
     }
 
     int nodeDone()
@@ -166,6 +168,10 @@ private:
     Node node;
 
     Node* currentNode;
+
+    int initialNode;
+
+    std::list<Link> links;
 
 };
 
