@@ -10,6 +10,12 @@ struct Link
     int port2;
 };
 
+struct NodeAndPort
+{
+    int node;
+    int port;
+};
+
 struct NodesAndPorts
 {
 
@@ -22,12 +28,6 @@ struct NodesAndPorts
     {
         nodesAndPorts.emplace_back<NodeAndPort>({in_node, in_port});
     }*/
-
-    struct NodeAndPort
-    {
-        int node;
-        int port;
-    };
 
     int node{};
 
@@ -50,9 +50,9 @@ struct Node
 
     bool final{};
 
-    std::list<Node> nodes{};
-
     std::list<NodesAndPorts> nodesAndPorts;
+
+    std::list<Node> nodes{};
 };
 
 
@@ -93,9 +93,50 @@ public:
         currentNode->nodesAndPorts = std::move(in_nodesAndPorts);
     }
 
+    int removeUnnecessaryPorts()
+    {
+        for (auto& elem : currentNode->prevNode->nodesAndPorts)
+        {
+            if (elem.node == currentNode->port)
+            {
+                continue;
+            } else
+            {
+                currentNode->nodesAndPorts.emplace_back<NodesAndPorts>({elem.node, {}});
+                for (auto& elem2 : elem.nodesAndPorts)
+                {
+                    if (elem2.port == currentNode->port)
+                    {
+                        continue;
+                    } else
+                    {
+                        currentNode->nodesAndPorts.back().nodesAndPorts.back() = elem2;
+                    }
+                }
+            }
+        }
+    }
+
     std::list<Link> run()
     {
+        for (auto& elem : currentNode->nodesAndPorts)
+        {
+            if (elem.node == initialNode)
+            {
+                if (currentNode->nodes.empty())
+                {
+                    addToNewLevel(++step, elem.nodesAndPorts.front().port);
 
+                    removeUnnecessaryPorts();
+                } else
+                {
+
+                }
+
+
+
+            }
+        }
     }
 
     int nodeDone()
@@ -170,6 +211,8 @@ private:
     Node* currentNode;
 
     int initialNode;
+
+    int step{};
 
     std::list<Link> links;
 
