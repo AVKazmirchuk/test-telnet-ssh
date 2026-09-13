@@ -3,156 +3,245 @@
 #include <list>
 
 
-
+/**
+ * Пара ID портов, образующих линк
+ */
 struct Link
 {
+    //ID порта №1
     int port1;
+    //ID порта №2
     int port2;
 };
 
-struct NodeAndPort
+/**
+ * Пара ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей
+ */
+struct ConcentratorIDAndPortID
 {
-    int node;
-    int port;
+    //ID концентратора, имеющего мас-адрес на этом порту
+    int concentratorIDPairedWithPort;
+    //ID порта, имеющего мас-адрес этого концентратора
+    int portIDPairedWithConcentrator;
 };
 
-struct NodesAndPorts
+/**
+ * Пара ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей), принадлежащего концентратору
+ */
+struct ConcentratorIDAndMACTableAnalog
 {
-
-    //NodesAndPorts() = default;
-
-    //NodesAndPorts(int in_node) : node{in_node}
-    //{}
-
-    /*void addNodeAndPort(int in_node, int in_port)
-    {
-        nodesAndPorts.emplace_back<NodeAndPort>({in_node, in_port});
-    }*/
-
-    int node{};
-
-    std::list<NodeAndPort> nodesAndPorts;
+    //ID концентратора, имеющего этот контейнер пар (соответствующих мас-таблице)
+    int concentratorIDPairedWithMACTableAnalog{};
+    //Контейнер пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей), принадлежащий этому концентратору
+    std::list<ConcentratorIDAndPortID> MACTableAnalogPairedWithConcentrator;
 };
 
+/**
+ * Узел дерева поиска линков
+ */
 struct Node
 {
-    //Node() = default;
-
-    //Node(int in_step, int in_port) : step{in_step}, port{in_port}//TODO добавить для списка инициализации
-    //{}
-
-    //friend BypassingPorts;
-
-    int step{};
-    int port{};
-
-    Node* prevNode{};
-
+    //ID шага поиска линков
+    int stepID{};
+    //ID концентратора узла дерева поиска линков, в котором перебираются порты (последовательно оставляется группа портов с одинаковым ID)
+    int portEnumerationConcentratorID{};
+    //Предыдущий узел дерева поиска линков
+    Node* previousNode{};
+    //Признак завершения поиска линков в этом узле и во всех подузлах дерева
     bool final{};
+    //Контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) в узле дерева поиска линков
+    std::list<ConcentratorIDAndMACTableAnalog> concentratorIDAndMACTableAnalog;
 
-    std::list<NodesAndPorts> nodesAndPorts;
-
+    //Контейнер узлов дерева поиска линков (рекурсивный)
     std::list<Node> nodes{};
 };
 
 
-
-class BypassingPorts
+/**
+ * Поиск линков концентраторов
+ */
+class SearchLinks
 {
 
 public:
 
-    BypassingPorts()
+    /**
+     * Конструктор по умолчанию
+     */
+    SearchLinks()
     {
+        //Определить текущий узел дерева поиска линков
         currentNode = &node;
     }
 
-    BypassingPorts(int in_initialNode, std::list<NodesAndPorts>&& in_nodesAndPorts)
+    /**
+     * Конструктор, принимающий ID начального концентратора, в котором перебираются порты, и контейнер пар
+     * ID концентратора, и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+     * @param portEnumerationInitialConcentratorID ID начального концентратора узла дерева поиска линков, в котором перебираются порты
+     * (последовательно оставляется группа портов с одинаковым ID)
+     * @param in_concentratorIDAndMACTableAnalog Контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого
+     * концентратора в соответствии с мас-таблицей) в узле дерева поиска линков
+     */
+    SearchLinks(int portEnumerationInitialConcentratorID, std::list<ConcentratorIDAndMACTableAnalog>&& in_concentratorIDAndMACTableAnalog)
     {
+        //Определить текущий узел дерева поиска линков
         currentNode = &node;
-        addNodeAndPort(in_initialNode, std::move(in_nodesAndPorts));
+        //Инициализировать ID начального концентратора узла дерева поиска линков, в котором перебираются порты, и контейнера пар ID концентратора и
+        //контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+        initializePortEnumerationInitialConcentratorIDAndConcentratorIDAndMACTableAnalog(portEnumerationInitialConcentratorID, std::move(in_concentratorIDAndMACTableAnalog));
     }
 
-    void addToCurrentLevel(int in_step, int in_port)//TODO добавить для списка инициализации
+    /**
+     * Добавить узел на текущий уровень в дерево поиска линков
+     * @param in_stepID ID шага поиска линков
+     * @param in_port ID концентратора, имеющего этот контейнер пар (соответствующих мас-таблице)
+     */
+    void addNodeToCurrentLevel(int in_stepID, int in_concentratorIDPairedWithMACTableAnalog)
     {
-        Node* prevNodeTmp{currentNode->prevNode};
-        currentNode->prevNode->nodes.emplace_back<Node>({in_step, in_port});
-        currentNode->prevNode->nodes.back().prevNode = prevNodeTmp;
+        //Назначить временную переменную предыдущего узла дерева поиска линков
+        Node* previousNodeTmp{currentNode->previousNode};
+        //Добавить узел на текущий уровень в контейнер узлов дерева поиска линков
+        currentNode->previousNode->nodes.emplace_back<Node>({in_stepID, in_concentratorIDPairedWithMACTableAnalog});
+        //Инициализировать предыдущий узел в новом узле
+        currentNode->previousNode->nodes.back().previousNode = previousNodeTmp;
     }
 
-    void addToNewLevel(int in_step, int in_port)//TODO добавить для списка инициализации
+    /**
+     * Добавить узел на новый уровень в дерево поиска линков
+     * @param in_stepID ID шага поиска линков
+     * @param in_concentratorIDPairedWithMACTableAnalog ID концентратора, имеющего этот контейнер пар (соответствующих мас-таблице)
+     */
+    void addNodeToNewLevel(int in_stepID, int in_concentratorIDPairedWithMACTableAnalog)
     {
-        currentNode->nodes.emplace_back<Node>({in_step, in_port});
-        currentNode->nodes.front().prevNode = currentNode;
+        //Добавить узел на новый уровень в контейнер узлов дерева поиска линков
+        currentNode->nodes.emplace_back<Node>({in_stepID, in_concentratorIDPairedWithMACTableAnalog});
+        //Инициализировать предыдущий узел в новом узле текущим
+        currentNode->nodes.front().previousNode = currentNode;
+        //Назначить новый узел текущим узлом дерева поиска линков
         currentNode = &currentNode->nodes.front();
     }
 
-    void addNodeAndPort(int in_initialNode, std::list<NodesAndPorts>&& in_nodesAndPorts)//TODO сделать внешнюю функцию для создания списка
+    /**
+     * Инициализировать ID начального концентратора узла дерева поиска линков, в котором перебираются порты, и контейнера пар ID концентратора и
+     * контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+     * @param in_portEnumerationInitialConcentratorID ID начального концентратора узла дерева поиска линков, в котором перебираются порты
+     * (последовательно оставляется группа портов с одинаковым ID)
+     * @param in_concentratorIDAndMACTableAnalog Контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого
+     * концентратора в соответствии с мас-таблицей) в узле дерева поиска линков
+     * TODO сделать внешнюю функцию для создания списка
+     */
+    void initializePortEnumerationInitialConcentratorIDAndConcentratorIDAndMACTableAnalog(int in_portEnumerationInitialConcentratorID, std::list<ConcentratorIDAndMACTableAnalog>&& in_concentratorIDAndMACTableAnalog)
     {
-        initialNode = in_initialNode;
-        currentNode->nodesAndPorts = std::move(in_nodesAndPorts);
+        //Инициализировать ID начального концентратора узла дерева поиска линков, в котором перебираются порты
+        portEnumerationInitialConcentratorID = in_portEnumerationInitialConcentratorID;
+        //Инициализировать Контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого
+        //концентратора в соответствии с мас-таблицей) в узле дерева поиска линков
+        currentNode->concentratorIDAndMACTableAnalog = std::move(in_concentratorIDAndMACTableAnalog);
     }
 
-    int removeUnnecessaryPorts()
+    /**
+     *
+     */
+    void removeUnnecessaryPorts()
     {
-        for (auto& elem : currentNode->prevNode->nodesAndPorts)
+        for (auto& elem : currentNode->previousNode->concentratorIDAndMACTableAnalog)
         {
-            if (elem.node == currentNode->port)
+            if (elem.concentratorIDPairedWithMACTableAnalog == currentNode->portEnumerationConcentratorID)
             {
                 continue;
             } else
             {
-                currentNode->nodesAndPorts.emplace_back<NodesAndPorts>({elem.node, {}});
-                for (auto& elem2 : elem.nodesAndPorts)
+                currentNode->concentratorIDAndMACTableAnalog.emplace_back<ConcentratorIDAndMACTableAnalog>({elem.concentratorIDPairedWithMACTableAnalog, {}});
+                for (auto& elem2 : elem.MACTableAnalogPairedWithConcentrator)
                 {
-                    if (elem2.port == currentNode->port)
+                    if (elem2.portIDPairedWithConcentrator == currentPortIDPairedWithConcentrator)
                     {
                         continue;
                     } else
                     {
-                        currentNode->nodesAndPorts.back().nodesAndPorts.back() = elem2;
+                        currentNode->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.back() = elem2;
                     }
                 }
             }
         }
     }
 
+    /**
+     *
+     * @return
+     */
     std::list<Link> run()
     {
-        for (auto& elem : currentNode->nodesAndPorts)
+        //Пока поиск линков не завершён
+        while (!this->node.final)
         {
-            if (elem.node == initialNode)
+            //Для каждой пары ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+            for (auto &elem: currentNode->concentratorIDAndMACTableAnalog)
             {
-                if (currentNode->nodes.empty())
+                //Если пара ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) найдена
+                if (elem.concentratorIDPairedWithMACTableAnalog == portEnumerationInitialConcentratorID)
                 {
-                    addToNewLevel(++step, elem.nodesAndPorts.front().port);
+                    //Если контейнер узлов дерева поиска линков пустой
+                    if (currentNode->nodes.empty())//в каком случае он может быть не пустой? Наверное надо удалить?
+                    {
+                        //Для каждой пары (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей), принадлежащей этому концентратору
+                        for (auto& nodeAndPort : elem.MACTableAnalogPairedWithConcentrator)
+                        {
+                            //Если ID порта, имеющего мас-адрес этого концентратора, равен ID текущего порта
+                            if (nodeAndPort.portIDPairedWithConcentrator == currentPortIDPairedWithConcentrator)
+                            {
+                                continue;
+                            }
 
-                    removeUnnecessaryPorts();
-                } else
-                {
+                            //ID текущего порта, имеющего мас-адрес этого концентратора присвоить ID порта
+                            currentPortIDPairedWithConcentrator = nodeAndPort.portIDPairedWithConcentrator;
+
+                            //
+                            addNodeToNewLevel(++stepID, elem.concentratorIDPairedWithMACTableAnalog);
+
+                            removeUnnecessaryPorts();
+
+                            if (currentNode->concentratorIDAndMACTableAnalog.size() == 2)
+                            {
+                                nodeDone();
+                            }
+                        }
+                    } else
+                    {
+
+                    }
+
 
                 }
-
-
-
+                else
+                {
+                    continue;
+                }
             }
         }
     }
 
+    /**
+     *
+     * @return
+     */
     int nodeDone()
     {
         currentNode->final = true;
 
+        links.emplace_back<Link>({currentNode->concentratorIDAndMACTableAnalog.begin()->MACTableAnalogPairedWithConcentrator.begin()->portIDPairedWithConcentrator,
+                                  ++currentNode->concentratorIDAndMACTableAnalog.begin()->MACTableAnalogPairedWithConcentrator.begin()->portIDPairedWithConcentrator});
+
         if (currentNode == &node)
         {
-            return currentNode->port;
+            return currentNode->portEnumerationConcentratorID;
         }
 
-        for (auto it{currentNode->prevNode->nodes.begin()}; it != currentNode->prevNode->nodes.end(); ++it)
+        for (auto it{currentNode->previousNode->nodes.begin()}; it != currentNode->previousNode->nodes.end(); ++it)
         {
             if (currentNode == &*it)
             {
-                if (++it != currentNode->prevNode->nodes.end())
+                if (++it != currentNode->previousNode->nodes.end())
                 {
                     currentNode = &*(it);
                     if (!currentNode->nodes.empty())
@@ -162,7 +251,7 @@ public:
 
                 } else
                 {
-                    currentNode = currentNode->prevNode;
+                    currentNode = currentNode->previousNode;
                     nodeDone();
                 }
 
@@ -170,17 +259,7 @@ public:
             }
         }
 
-        return currentNode->port;
-    }
-
-    int getCurrentPort()
-    {
-        return currentNode->port;
-    }
-
-    int getPrevStep()
-    {
-        return currentNode->prevNode->step;
+        return currentNode->portEnumerationConcentratorID;
     }
 
 
@@ -189,31 +268,34 @@ public:
     {
         for (Node &node: in_node.nodes)
         {
-            std::cout << node.step << ' ' << node.port << ' ' << node.prevNode->port << ' ' << node.final << '\n';
+            std::cout << node.stepID << ' ' << node.portEnumerationConcentratorID << ' ' << node.previousNode->portEnumerationConcentratorID << ' ' << node.final << '\n';
 
             output(node);
         }
     }
 
-    void outputAll(BypassingPorts& bypassingPorts)
+    void outputAll(SearchLinks& bypassingPorts)
     {
         std::cout  << '\n' << "Port traversal Tree" << '\n';
 
-        std::cout << bypassingPorts.node.step << ' ' << bypassingPorts.node.port << ' ' << '0' << ' ' << bypassingPorts.node.final << '\n';
+        std::cout << bypassingPorts.node.stepID << ' ' << bypassingPorts.node.portEnumerationConcentratorID << ' ' << '0' << ' ' << bypassingPorts.node.final << '\n';
 
         output(bypassingPorts.node);
     }
 
 private:
 
+    //Узел дерева поиска линков начального уровня
     Node node;
-
+    //Текущий узел дерева поиска линков
     Node* currentNode;
-
-    int initialNode;
-
-    int step{};
-
+    //ID начального концентратора узла дерева поиска линков, в котором перебираются порты (последовательно оставляется группа портов с одинаковым ID)
+    int portEnumerationInitialConcentratorID;
+    //ID шага поиска линков
+    int stepID{};
+    //ID текущего порта, имеющего мас-адрес этого концентратора
+    int currentPortIDPairedWithConcentrator;
+    //Контейнер пар ID портов, образующих линк
     std::list<Link> links;
 
 };
@@ -222,7 +304,7 @@ private:
 
 int main()
 {
-    BypassingPorts bypassingPorts;
+    SearchLinks bypassingPorts;
 
     bypassingPorts.addToNewLevel(0, 17);
     bypassingPorts.addToCurrentLevel(0, 16);
