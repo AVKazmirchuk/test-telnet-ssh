@@ -153,7 +153,7 @@ public:
             //(соответствует ID концентратора узла дерева поиска линков, в котором перебираются порты, текущего узла дерева поиска линков)
             if (pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog == currentNode->portEnumerationConcentratorID)
             {
-
+                //
                 continue;
             } else
             {
@@ -203,7 +203,7 @@ public:
                         currentPortIDPairedWithConcentrator = pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator;
 
                         //Если предыдущий узел дерева поиска линков отсутствует
-                        if (currentNode->previousNode == nullptr)
+                        if (currentNode->previousNode == nullptr)//TODO добавить услови для проверки добавления следующего уровня узла
                         {
                             //Добавить узел на новый уровень в дерево поиска линков
                             addNodeToNewLevel(++stepID,
