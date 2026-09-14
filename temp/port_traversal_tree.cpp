@@ -174,6 +174,23 @@ public:
         }
     }
 
+    Node* searchCurrentPortIDPairedWithConcentrator(int in_currentPortIDPairedWithConcentrator)
+    {
+        for (auto &in_node : currentNode->previousNode->nodes)
+        {
+            //Для каждой пары ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+            for (auto &pairOfConcentratorIDAndMACTableAnalog : node.concentratorIDAndMACTableAnalog)
+            {
+                if (pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator.back().portIDPairedWithConcentrator == in_currentPortIDPairedWithConcentrator)
+                {
+                    return &in_node;
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
     /**
      *
      * @return
@@ -181,29 +198,68 @@ public:
     std::list<Link> run()
     {
         //Пока поиск линков не завершён
-        while (!this->node.final)
+        while (!node.final)
         {
             //Для каждой пары ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
-            for (auto &pairOfConcentratorIDAndMACTableAnalog: currentNode->concentratorIDAndMACTableAnalog)
+            for (auto &pairOfConcentratorIDAndMACTableAnalog : currentNode->concentratorIDAndMACTableAnalog)
             {
                 //Если пара ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) найдена
+                //(соответствует ID начального концентратора узла дерева поиска линков)
                 if (pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog == portEnumerationInitialConcentratorID)
                 {
                     //Для каждой пары (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей), принадлежащей этому концентратору
-                    for (auto &pairOfConcentratorIDAndPortID: pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator)
+                    for (auto &pairOfConcentratorIDAndPortID : pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator)
                     {
-                        //Если ID порта, имеющего мас-адрес этого концентратора, равен ID текущего порта
-                        if (pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator == currentPortIDPairedWithConcentrator)
+
+
+
+                        Node* nodeOfPortIDPairedWithConcentrator{searchCurrentPortIDPairedWithConcentrator(pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator)};
+                        if (nodeOfPortIDPairedWithConcentrator)
                         {
-                            //Узел в дереве поиска линков уже добавлен с этим ID порта. Перейти к слудующей паре
-                            continue;
+                            nodeOfPortIDPairedWithConcentrator->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(pairOfConcentratorIDAndPortID);
+                        }
+                        else
+                        {
+                            if (currentNode->previousNode->nodes.empty())
+                            {
+                                //Добавить узел на новый уровень в дерево поиска линков
+                                addNodeToNewLevel(++stepID, pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog);
+
+                                //Добавить текущую пару в контейнер пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+                                // текущего узла, принадлежащий этому концентратору
+                                currentNode->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(pairOfConcentratorIDAndPortID);
+                            } else
+                            {
+                                //Добавить узел на текущий уровень в дерево поиска линков
+                                addNodeToCurrentLevel(0,
+                                                      pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog);
+
+                                //Добавить текущую пару в контейнер пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+                                // текущего уровня добавленного узла, принадлежащий этому концентратору
+                                currentNode->previousNode->nodes.back().concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(pairOfConcentratorIDAndPortID);
+                            }
                         }
 
-                        //ID текущего порта, имеющего мас-адрес этого концентратора присвоить ID порта
-                        currentPortIDPairedWithConcentrator = pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator;
+
+
+                        //Если ID порта, имеющего мас-адрес этого концентратора, равен ID текущего порта
+                        //TODO currentPortIDPairedWithConcentrator нужно заменить чтением из контейнера текущего уровня дерева поиска линков, чтобы обходить
+                        //TODO все уже добавленные узлы
+
+                        /*if (pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator == currentPortIDPairedWithConcentrator)
+                        {
+                            //Узел в дереве поиска линков уже добавлен с этим ID порта. Добавить текущую пару в контейнер пар
+                            // (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) текущего узла, принадлежащий этому концентратору
+                            currentNode->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(pairOfConcentratorIDAndPortID);
+                            //Перейти к следующей паре
+                            continue;
+                        }*/
+
+                        //ID текущего порта, имеющего мас-адрес этого концентратора, присвоить ID порта текущей пары
+                        //currentPortIDPairedWithConcentrator = pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator;
 
                         //Если предыдущий узел дерева поиска линков отсутствует
-                        if (currentNode->previousNode == nullptr)//TODO добавить услови для проверки добавления следующего уровня узла
+                        /*if (currentNode->previousNode == nullptr)//TODO добавить услови для проверки добавления следующего уровня узла
                         {
                             //Добавить узел на новый уровень в дерево поиска линков
                             addNodeToNewLevel(++stepID,
@@ -213,26 +269,28 @@ public:
                             //Добавить узел на текущий уровень в дерево поиска линков
                             addNodeToCurrentLevel(0,
                                                   pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog);
-                        }
+                        }*/
 
-                        //Добавить в новый узел контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора
-                        // в соответствии с мас-таблицей) и отбросить лишние ID концентратора и ID порта
-                        addConcentratorIDAndMACTableAnalogAndRemoveUnnecessaryPorts();
 
-                        //Если контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
-                        //содержтит два элемента (два порта, образующих линк, определены)
-                        if (currentNode->concentratorIDAndMACTableAnalog.size() == 2)
-                        {
-
-                            nodeDone();
-                        }
                     }
 
                 }
                 else
                 {
-                    continue;
+                    break;
                 }
+            }
+
+            //Добавить в новый узел контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора
+            // в соответствии с мас-таблицей) и отбросить лишние ID концентратора и ID порта
+            addConcentratorIDAndMACTableAnalogAndRemoveUnnecessaryPorts();
+
+            //Если контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
+            //содержтит два элемента (два порта, образующих линк, определены)
+            if (currentNode->concentratorIDAndMACTableAnalog.size() == 2)
+            {
+
+                nodeDone();
             }
         }
     }
