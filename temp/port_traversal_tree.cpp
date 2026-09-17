@@ -158,7 +158,7 @@ public:
             {
                 //Если пара ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) найдена
                 //(соответствует ID концентратора узла дерева поиска линков, в котором перебираются порты, текущего узла дерева поиска линков)
-                if (pairOfConcentratorIDAndMACTableAnalogCurrentNode.concentratorIDPairedWithMACTableAnalog == newNode.portEnumerationConcentratorID)
+                if (pairOfConcentratorIDAndMACTableAnalogCurrentNode.concentratorIDPairedWithMACTableAnalog == newNode.portEnumerationConcentratorID)//Эта, наверное, лишняя проверка, так как ниже в условии это проверяется
                 {
                     //Уже добавленный в функции выше по стеку
                     //continue;
@@ -168,8 +168,8 @@ public:
                     bool addedConcentratorID{};
                     for (auto &MACTableAnalogOfNewNode : newNode.concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator)
                     {
-                        if (pairOfConcentratorIDAndMACTableAnalogCurrentNode.concentratorIDPairedWithMACTableAnalog ==
-                            MACTableAnalogOfNewNode.concentratorIDPairedWithPort)
+
+                        if (MACTableAnalogOfNewNode.concentratorIDPairedWithPort == pairOfConcentratorIDAndMACTableAnalogCurrentNode.concentratorIDPairedWithMACTableAnalog)
                         {
                             newNode.concentratorIDAndMACTableAnalog.emplace_back<ConcentratorIDAndMACTableAnalog>(
                                     {pairOfConcentratorIDAndMACTableAnalogCurrentNode.concentratorIDPairedWithMACTableAnalog, {}});
@@ -183,15 +183,16 @@ public:
                         continue;
                     }
 
-                    for (auto &pairOfConcentratorIDAndPortID : pairOfConcentratorIDAndMACTableAnalogCurrentNode.MACTableAnalogPairedWithConcentrator)
+                    for (auto &pairOfConcentratorIDAndPortIDCurrentNode : pairOfConcentratorIDAndMACTableAnalogCurrentNode.MACTableAnalogPairedWithConcentrator)
                     {
                         for (auto &elem : newNode.concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator)
                         {
-                            if (pairOfConcentratorIDAndPortID.concentratorIDPairedWithPort ==
-                                elem.concentratorIDPairedWithPort)
+                            if (pairOfConcentratorIDAndPortIDCurrentNode.concentratorIDPairedWithPort == elem.concentratorIDPairedWithPort ||
+                                pairOfConcentratorIDAndPortIDCurrentNode.concentratorIDPairedWithPort == newNode.concentratorIDAndMACTableAnalog.front().concentratorIDPairedWithMACTableAnalog)
                             {
                                 newNode.concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(
-                                        pairOfConcentratorIDAndPortID);
+                                        pairOfConcentratorIDAndPortIDCurrentNode);
+                                break;
 
                             }
                         }
@@ -349,13 +350,19 @@ public:
                 //Добавить в новый узел контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора
                 // в соответствии с мас-таблицей) и отбросить лишние ID концентратора и ID порта
                 addConcentratorIDAndMACTableAnalogAndRemoveUnnecessaryPorts();
+
+                newLevel = false;
+                //Назначить новый узел текущим узлом дерева поиска линков
+                currentNode = &currentNode->nodes.front();//*/
             }
 
             //outputConcentratorIDAndMACTableAnalog();
 
+            /*newLevel = false;
             //Назначить новый узел текущим узлом дерева поиска линков
-            currentNode = &currentNode->nodes.front();
-            outputConcentratorIDAndMACTableAnalog();
+            currentNode = &currentNode->nodes.front();//*/
+
+            /*outputConcentratorIDAndMACTableAnalog();
             std::cout << "1 while is done" << '\n';
             getchar();//*/
         }
@@ -387,10 +394,13 @@ public:
                 if (++it != currentNode->previousNode->nodes.end())
                 {
                     currentNode = &*(it);
-                    if (!currentNode->nodes.empty())
+
+                    return currentNode->portEnumerationConcentratorID;
+
+                    /*if (!currentNode->nodes.empty())
                     {
                         currentNode = &currentNode->nodes.front();
-                    }
+                    }*/
 
                 } else
                 {
@@ -487,7 +497,13 @@ int main()
             };
 
     SearchLinks bypassingPorts(62, concentratorIDAndMACTableAnalog);
-    bypassingPorts.run();
+    std::list<Link> links{bypassingPorts.run()};
+
+    for (Link &pairOfPorts: links)
+    {
+        std::cout << pairOfPorts.port1 << ' ' << pairOfPorts.port2 << '\n';
+
+    }
 
     /*bypassingPorts.addToNewLevel(0, 17);
     bypassingPorts.addToCurrentLevel(0, 16);
@@ -514,7 +530,7 @@ int main()
     //bypassingPorts.nodeDone();
     //bypassingPorts.nodeDone();*/
 
-    bypassingPorts.outputAll(bypassingPorts);
+
 
     return 0;
 }
