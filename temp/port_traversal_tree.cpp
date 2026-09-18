@@ -249,7 +249,7 @@ public:
                 {
                     portEnumerationInitialConcentratorID = pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog;
 
-                    std::cout << "portEnumerationInitialConcentratorID: " << portEnumerationInitialConcentratorID << '\n';
+
                     return;
                 }
 
@@ -266,7 +266,7 @@ public:
         //Пока поиск линков не завершён
         while (!node.final)
         {
-
+            ++count;
             bool newLevel{};
 
             /*for (Link &pairOfPorts: links)
@@ -290,9 +290,13 @@ public:
             } else
             {
 
+                std::cout << "portEnumerationInitialConcentratorID: " << portEnumerationInitialConcentratorID << '\n';
+
                 //Для каждой пары ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
                 for (auto &pairOfConcentratorIDAndMACTableAnalog : currentNode->concentratorIDAndMACTableAnalog)
                 {
+
+
                     //Если пара ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей) найдена
                     //(соответствует ID начального концентратора узла дерева поиска линков)
                     if (pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog ==
@@ -373,7 +377,7 @@ public:
                 // в соответствии с мас-таблицей) и отбросить лишние ID концентратора и ID порта
                 addConcentratorIDAndMACTableAnalogAndRemoveUnnecessaryPorts();
 
-                newLevel = false;
+
                 //Назначить новый узел текущим узлом дерева поиска линков
                 currentNode = &currentNode->nodes.front();//*/
             }
@@ -388,8 +392,8 @@ public:
             //Назначить новый узел текущим узлом дерева поиска линков
             currentNode = &currentNode->nodes.front();//*/
 
-            system("cls");
-            outputConcentratorIDAndMACTableAnalog(node);
+            //system("cls");
+            outputConcentratorIDAndMACTableAnalog();
             std::cout << "1 while is done" << '\n';
             getchar();//*/
         }
@@ -467,6 +471,161 @@ public:
         }
     }
 
+    void outputConcentratorIDAndMACTableAnalog()
+    {
+
+        if (count == 1)
+        {
+            std::cout << "nodes 1" << '\n';
+            for (auto &nodes1: node.nodes)
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes1.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+        if (count == 2)
+        {
+            std::cout << "nodes 2" << '\n';
+
+            for (auto &nodes2: node.nodes.front().nodes)
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes2.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+        if (count == 3)
+        {
+            std::cout << "nodes 3" << '\n';
+
+            for (auto &nodes2 : node.nodes.front().nodes.front().nodes
+                    )
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes2.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+        if (count == 4)
+        {
+            std::cout << "nodes 4" << '\n';
+
+            for (auto &nodes2 : node.nodes.front().nodes.front().nodes.front().nodes)
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes2.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+        if (count == 5)
+        {
+            std::cout << "nodes 5" << '\n';
+
+            for (auto &nodes2 : node.nodes.front().nodes.front().nodes.front().nodes.front().nodes)
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes2.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+        if (count == 6)
+        {
+            std::cout << "nodes 6" << '\n';
+
+            for (auto &nodes2 : node.nodes.front().nodes.front().nodes.front().nodes.front().nodes.back().nodes)
+            {
+                std::cout << "----------" << '\n';
+                for (auto &elem2: nodes2.concentratorIDAndMACTableAnalog)
+                {
+                    std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                    for (auto &elem3: elem2.MACTableAnalogPairedWithConcentrator)
+                    {
+                        std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator
+                                  << '\n';
+                    }
+
+                    std::cout << '\n';
+                }
+            }
+        }
+
+
+        /*std::cout << "nodes from second" << '\n';
+
+        for (auto &nodes3 : (++node.nodes.begin())->nodes)
+        {
+            std::cout << "----------" << '\n';
+                        for (auto &elem2 : nodes3.concentratorIDAndMACTableAnalog)
+            {
+                std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
+
+                for (auto &elem3 : elem2.MACTableAnalogPairedWithConcentrator)
+                {
+                    std::cout << elem3.concentratorIDPairedWithPort << ' ' << elem3.portIDPairedWithConcentrator << '\n';
+                }
+
+                std::cout << '\n';
+            }
+        }*/
+    }
+
     void output(Node& in_node)
     {
         for (Node &node: in_node.nodes)
@@ -504,7 +663,7 @@ private:
 
 
     int nodesCount{};
-
+    int count{};
 };
 
 
