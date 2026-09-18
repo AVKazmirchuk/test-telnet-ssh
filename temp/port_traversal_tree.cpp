@@ -235,6 +235,28 @@ public:
         return nullptr;
     }
 
+    void searchPortEnumerationInitialConcentratorID()
+    {
+        for (auto &pairOfConcentratorIDAndMACTableAnalog : currentNode->concentratorIDAndMACTableAnalog)
+        {
+            //int previousPortID{pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator.back().portIDPairedWithConcentrator};
+
+            //Для каждой пары (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей), принадлежащей этому концентратору
+            for (auto &pairOfConcentratorIDAndPortID : pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator)
+            {
+                if (pairOfConcentratorIDAndMACTableAnalog.MACTableAnalogPairedWithConcentrator.back().portIDPairedWithConcentrator !=
+                    pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator)
+                {
+                    portEnumerationInitialConcentratorID = pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog;
+
+                    std::cout << "portEnumerationInitialConcentratorID: " << portEnumerationInitialConcentratorID << '\n';
+                    return;
+                }
+
+            }
+        }
+    }
+
     /**
      *
      * @return
@@ -282,7 +304,7 @@ public:
                             //Если контейнер узлов дерева поиска линков текущего узла (для уровней глубже) пустой
                             if (!newLevel)
                             {
-                                std::cout << "addNodeToNewLevel" << '\n';
+                                //std::cout << "addNodeToNewLevel" << '\n';
                                 //Добавить узел на новый уровень в дерево поиска линков
                                 addNodeToNewLevel(++stepID,
                                                   pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog);
@@ -302,7 +324,7 @@ public:
                                 //Контейнер узлов дерева поиска линков, в котором находится текущий узел, непустой
                             else
                             {
-                                std::cout << "addNodeToCurrentLevel" << '\n';
+                                //std::cout << "addNodeToCurrentLevel" << '\n';
                                 //Искать порт в контейнере пар (ID концентратора и ID порта другого концентратора в соответствии с мас-таблицей)
                                 Node *nodeOfPortIDPairedWithConcentrator{searchCurrentPortIDPairedWithConcentrator(
                                         pairOfConcentratorIDAndPortID.portIDPairedWithConcentrator)};
@@ -311,12 +333,12 @@ public:
 
                                 if (nodeOfPortIDPairedWithConcentrator)
                                 {
-                                    std::cout << "portIDPairedWithConcentrator exists" << '\n';
+                                    //std::cout << "portIDPairedWithConcentrator exists" << '\n';
                                     nodeOfPortIDPairedWithConcentrator->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.emplace_back(
                                             pairOfConcentratorIDAndPortID);
                                 } else
                                 {
-                                    std::cout << "portIDPairedWithConcentrator not exists" << '\n';
+                                    //std::cout << "portIDPairedWithConcentrator not exists" << '\n';
                                     //Добавить узел на текущий уровень в дерево поиска линков
                                     addNodeToCurrentLevel(0,
                                                           pairOfConcentratorIDAndMACTableAnalog.concentratorIDPairedWithMACTableAnalog);
@@ -356,13 +378,18 @@ public:
                 currentNode = &currentNode->nodes.front();//*/
             }
 
+            searchPortEnumerationInitialConcentratorID();
+
+
+
             //outputConcentratorIDAndMACTableAnalog();
 
             /*newLevel = false;
             //Назначить новый узел текущим узлом дерева поиска линков
             currentNode = &currentNode->nodes.front();//*/
 
-            /*outputConcentratorIDAndMACTableAnalog();
+            system("cls");
+            outputConcentratorIDAndMACTableAnalog(node);
             std::cout << "1 while is done" << '\n';
             getchar();//*/
         }
@@ -416,10 +443,14 @@ public:
     }
 
 
-    void outputConcentratorIDAndMACTableAnalog()
+    void outputConcentratorIDAndMACTableAnalog(Node& in_node)
     {
-        for (auto &elem : node.nodes)
+
+
+        for (auto &elem : in_node.nodes)
         {
+            std::cout << "Node: " << nodesCount++ << '\n';
+
             for (auto &elem2 : elem.concentratorIDAndMACTableAnalog)
             {
                 std::cout << elem2.concentratorIDPairedWithMACTableAnalog << '\n';
@@ -431,6 +462,8 @@ public:
 
                 std::cout << '\n';
             }
+
+            outputConcentratorIDAndMACTableAnalog(elem);
         }
     }
 
@@ -464,9 +497,13 @@ private:
     //ID шага поиска линков
     int stepID{};
     //ID текущего порта, имеющего мас-адрес этого концентратора
-    int currentPortIDPairedWithConcentrator{};
+    //int currentPortIDPairedWithConcentrator{};
     //Контейнер пар ID портов, образующих линк
     std::list<Link> links;
+
+
+
+    int nodesCount{};
 
 };
 
