@@ -684,6 +684,8 @@ struct Topology
 
 class NetworkTopologyProcessing
 {
+public:
+
     NetworkTopologyProcessing() = default;
 
     NetworkTopologyProcessing(int in_rootConcentrator, const std::list<Link>& in_links) : rootConcentrator{in_rootConcentrator}, tempLinks{in_links}
@@ -744,8 +746,11 @@ class NetworkTopologyProcessing
         //Пока построение топологии не завершено
         while (!topology.final)
         {
+            ++count;
+
             if (isLastConcentrator())
             {
+                --count;
                 concentratorDone();
                 continue;
             }
@@ -767,26 +772,33 @@ class NetworkTopologyProcessing
                         )};
 
 
-                        //Для каждого соответствия ID концентратора и его портов
+                        //Для каждого соответствия ID концентратора и его портов (найти другой концентратор по его порту из полученного линка ранее)
                         for (auto& concentratorIDAndPortsID2 : concentratorsIdAndPortsId)
                         {
                             //Искать в таблице соответствия ID концентратора и его портов порт другого (нового уровня) концентратора
-                            auto itNewPort{std::find_if(concentratorIDAndPortsID2.portsID.begin(), concentratorIDAndPortsID2.portsID.end(),
-                                                        [itLink](int port)
-                                                        {
-                                                            return port == itLink->port1 || port == itLink->port2;
-                                                        })
-                            };
-
-                            if (itNewPort != concentratorIDAndPortsID2.portsID.end())
+                            if (concentratorIDAndPortsID2.concentratorID != currentConcentrator->concentratorID)
                             {
-                                Link newLink{*itNewPort, (*itNewPort == itLink->port1 ? itLink->port2 : itLink->port1)};
+                                auto itNewPort{std::find_if(concentratorIDAndPortsID2.portsID.begin(),
+                                                            concentratorIDAndPortsID2.portsID.end(),
+                                                            [itLink](int port2)
+                                                            {
+                                                                return port2 == itLink->port1 || port2 == itLink->port2;
+                                                            })
+                                };
 
-                                currentConcentrator->topologies.emplace_back<Topology>({concentratorIDAndPortsID2.concentratorID, currentConcentrator, newLink, false, {}});
+                                if (itNewPort != concentratorIDAndPortsID2.portsID.end())//TODO это условие лишнее?
+                                {
+                                    Link newLink{*itNewPort,
+                                                 (*itNewPort == itLink->port1 ? itLink->port2 : itLink->port1)};
 
-                                tempLinks.erase(itLink);
+                                    currentConcentrator->topologies.emplace_back<Topology>(
+                                            {concentratorIDAndPortsID2.concentratorID, currentConcentrator, newLink,
+                                             false, {}});
 
-                                break;
+                                    tempLinks.erase(itLink);
+
+                                    break;
+                                }
                             }
                         }
                     }
@@ -798,6 +810,8 @@ class NetworkTopologyProcessing
             //Назначить новый узел текущим узлом дерева поиска линков
             currentConcentrator = &currentConcentrator->topologies.front();
         }
+
+        output();
     }
 
 private:
@@ -811,6 +825,9 @@ private:
     std::list<Link> tempLinks;
 
     std::list<ConcentratorIDAndPortsID> concentratorsIdAndPortsId;
+
+
+    int count{};
 
     /**
      *
@@ -861,9 +878,78 @@ private:
                 break;
             }
         }
+    }
 
+    void output()
+    {
+
+
+        for (auto &concentrator: topology.topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+
+        }
+
+        auto it{++topology.topologies.begin()};
+
+        for (auto &concentrator: it->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+
+        }
+
+        auto it2{topology.topologies.begin()};
+
+        for (auto &concentrator: it2->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
+
+        auto it3{it2->topologies.begin()};
+
+        for (auto &concentrator: it3->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
+
+        auto it4{it3->topologies.begin()};
+
+        for (auto &concentrator: it4->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
+
+        auto it5{it4->topologies.begin()};
+
+        for (auto &concentrator: it5->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
+
+        auto it6{++it5->topologies.begin()};
+
+        for (auto &concentrator: it6->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
+        auto it7{it6->topologies.begin()};
+
+        for (auto &concentrator: it7->topologies)
+        {
+            std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+        }
 
     }
+
+
 };
 
 int main()
@@ -935,23 +1021,27 @@ int main()
 
 
 
-    std::list<ConcentratorIDAndPortID> concentratorsIDAndPortsID = {
+    std::list<ConcentratorIDAndPortsID> concentratorsIDAndPortsID = {
             {
                     {4, {{41, 42, 43}}},
-                    {5, {{51}}},
+                    {5, {51}},
                     {11, {{112, 113}}},
                     {12, {{122, 1224, 121}}},
                     {9, {{91, 92}}},
                     {10, {{102, 101}}},
                     {8, {{82, 81}}},
                     {62, {{17, 16, 23, 22}}},
-                    {2, {{21}}},
-                    {6, {{61}}},
-                    {24, {{241}}},
+                    {2, {21}},
+                    {6, {61}},
+                    {24, {241}},
                     {13, {{131, 132}}},
-                    {7, {{71}}},
-                    {17, {{1748}}}
+                    {7, {71}},
+                    {17, {1748}}
             }};
+
+    NetworkTopologyProcessing networkTopologyProcessing(62, originalLinks);
+    networkTopologyProcessing.addConcentratorIDAndPortsID(concentratorsIDAndPortsID);
+    networkTopologyProcessing.buildTopologyBasedOnLinks();
 
     return 0;
 }
