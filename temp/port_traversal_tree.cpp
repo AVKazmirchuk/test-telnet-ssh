@@ -682,6 +682,22 @@ struct Topology
     std::list<Topology> topologies{};
 };
 
+struct TestTopology
+{
+    int concentratorID;
+    int concentratorIDOfNextLevel;
+    Link link;
+
+    bool operator == (const TestTopology& rhs) const
+    {
+        if (this->concentratorID == rhs.concentratorID &&
+            this->concentratorIDOfNextLevel == rhs.concentratorIDOfNextLevel &&
+            this->link == rhs.link) return true;//TODO сделать проверку на равенство размеров
+
+        return false;
+    }
+};
+
 class NetworkTopologyProcessing
 {
 public:
@@ -814,6 +830,12 @@ public:
         output();
     }
 
+    std::list<TestTopology> testTopology()
+    {
+        return containerOfTestTopology;
+    }
+
+
 private:
 
     Topology topology;
@@ -826,6 +848,7 @@ private:
 
     std::list<ConcentratorIDAndPortsID> concentratorsIdAndPortsId;
 
+    std::list<TestTopology> containerOfTestTopology;
 
     int count{};
 
@@ -888,6 +911,7 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
 
         }
 
@@ -897,6 +921,7 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
 
         }
 
@@ -906,6 +931,8 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+
         }
 
         auto it3{it2->topologies.begin()};
@@ -914,6 +941,8 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+
         }
 
         auto it4{it3->topologies.begin()};
@@ -922,6 +951,8 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+
         }
 
         auto it5{it4->topologies.begin()};
@@ -930,6 +961,8 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+
         }
 
         auto it6{++it5->topologies.begin()};
@@ -938,6 +971,8 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+
         }
         auto it7{it6->topologies.begin()};
 
@@ -945,9 +980,11 @@ private:
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
                       << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-        }
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
 
+        }
     }
+
 
 
 };
@@ -1042,6 +1079,31 @@ int main()
     NetworkTopologyProcessing networkTopologyProcessing(62, originalLinks);
     networkTopologyProcessing.addConcentratorIDAndPortsID(concentratorsIDAndPortsID);
     networkTopologyProcessing.buildTopologyBasedOnLinks();
+
+    std::list<TestTopology> testTopology{
+            {
+                    {62, 8, {81, 17}},
+                    {62, 4, {41, 16}},
+                    {62, 6, {61, 23}},
+                    {62, 2, {21, 22}},
+                    {4, 5, {51, 42}},
+                    {4, 24, {241, 43}},
+                    {8, 10, {101, 82}},
+                    {10, 9, {91, 102}},
+                    {9, 12, {122, 92}},
+                    {12, 17, {1748, 1224}},
+                    {12, 11, {112, 121}},
+                    {11, 13, {131, 113}},
+                    {13, 7, {71, 132}},
+
+            }
+    };
+
+    if (links == originalLinks) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+    if (networkTopologyProcessing.testTopology() == testTopology) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
 
     return 0;
 }
