@@ -341,55 +341,53 @@ public:
      *
      * @return
      */
-    int nodeDone()
+    void nodeDone()
     {
-        std::cout << "nodeDone" << '\n';
-        //std::cout << currentNode->portEnumerationConcentratorID << '\n';
-        std::cout << currentNode->concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator.front().portIDPairedWithConcentrator << "\n";
-
+        //Отметить текущий узел сделанным
         currentNode->final = true;
 
+        //Если контейнер пар ID концентратора и контейнера пар (ID концентратора и ID порта другого концентратора в
+        //соответствии с мас-таблицей) в узле дерева поиска линков содержит два элемента (два порта образующих линк)
         if (currentNode->concentratorIDAndMACTableAnalog.size() == 2)
         {
+            //Добавить в контейнер пар ID портов, образующих линк
             links.emplace_back<Link>(
                     {currentNode->concentratorIDAndMACTableAnalog.begin()->MACTableAnalogPairedWithConcentrator.begin()->portIDPairedWithConcentrator,
                      (++currentNode->concentratorIDAndMACTableAnalog.begin())->MACTableAnalogPairedWithConcentrator.begin()->portIDPairedWithConcentrator});
         }
 
+        //Если текущий узел является корнем
         if (currentNode == &node)
         {
-            return currentNode->concentratorIDAndMACTableAnalog.front().concentratorIDPairedWithMACTableAnalog;
+            //Завершить
+            return;
         }
 
-        for (auto it{currentNode->previousNode->nodes.begin()}; it != currentNode->previousNode->nodes.end(); ++it)
+        //Получить итератор текущего узла этого уровня
+        auto it{currentNode->previousNode->nodes.begin()};
+        //Пока не получен итератор текущего узла
+        while (&*it != currentNode)
         {
-            if (currentNode == &*it)
-            {
-                if (++it != currentNode->previousNode->nodes.end())
-                {
-                    currentNode = &*(it);
-
-                    std::cout << "portIDPairedWithConcentrator: " <<  currentNode->concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator.front().portIDPairedWithConcentrator << '\n';
-                    std::cout << "portIDPairedWithConcentrator: " <<  currentNode->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.back().portIDPairedWithConcentrator << '\n';
-
-                    return currentNode->concentratorIDAndMACTableAnalog.front().concentratorIDPairedWithMACTableAnalog;
-
-                    /*if (!currentNode->nodes.empty())
-                    {
-                        currentNode = &currentNode->nodes.front();
-                    }*/
-
-                } else
-                {
-                    currentNode = currentNode->previousNode;
-                    nodeDone();
-                }
-
-                break;
-            }
+            //Перейти к следующему узлу
+            ++it;
         }
 
-        return currentNode->concentratorIDAndMACTableAnalog.front().concentratorIDPairedWithMACTableAnalog;
+        //Если "следующий" узел этого уровня присутствует
+        if (++it != currentNode->previousNode->nodes.end())
+        {
+            //Назначить "следующего" текущим узлом
+            currentNode = &*(it);
+
+            //Завершить
+            return;
+        }
+        else
+        {
+            //Назначить текущим узлом выше по линку
+            currentNode = currentNode->previousNode;
+            //Рекурсивно определить сделанный концентратор
+            nodeDone();
+        }
     }
 
 
@@ -720,28 +718,30 @@ public:
 
     bool isLastConcentrator()
     {
-        //Для каждого соответствия ID концентратора и его портов
-        for (auto& concentratorIDAndPortsID : concentratorsIdAndPortsId)
-        {
-            //Если ID концентратора равно ID концентратора текущего узла
-            if (concentratorIDAndPortsID.concentratorID == currentConcentrator->concentratorID)
-            {
-                //Для каждого порта этого концентратора
-                for (auto& port : concentratorIDAndPortsID.portsID)
-                {
-                    //Искать в таблице линков эти порты (получить линк текущего концентратора)
-                    auto itLink{std::find_if(tempLinks.begin(), tempLinks.end(),
-                                             [port](Link link)
-                                             {
-                                                 return link.port1 == port || link.port2 == port;
-                                             }
-                    )};
+        //Если ID концентратора равно ID концентратора текущего узла
+        auto concentratorIDAndPortsID{
+                std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                             [this](auto &concentratorIDAndPortsID)
+                             {
+                                 return concentratorIDAndPortsID.concentratorID ==
+                                        currentConcentrator->concentratorID;
+                             })};
 
-                    if (itLink != tempLinks.end())
-                    {
-                        return false;
-                    }
-                }
+        //Для каждого порта этого концентратора
+        for (auto &port: concentratorIDAndPortsID->portsID)
+        {
+            //Искать в таблице линков эти порты (получить линк текущего концентратора)
+            auto itLink{std::find_if(tempLinks.begin(), tempLinks.end(),
+                                     [port](Link link)
+                                     {
+                                         return link.port1 == port || link.port2 == port;
+                                     }
+            )};
+
+            //У текущего концентратора ещё есть линки (есть концентраторы следующего уровня)
+            if (itLink != tempLinks.end())
+            {
+                return false;
             }
         }
 
@@ -771,55 +771,54 @@ public:
                 continue;
             }
 
-            //Для каждого соответствия ID концентратора и его портов
-            for (auto& concentratorIDAndPortsID : concentratorsIdAndPortsId)
+            //Если ID концентратора равно ID концентратора текущего узла
+            auto concentratorIDAndPortsID{
+                    std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                 [this](auto &concentratorIDAndPortsID)
+                                 {
+                                     return concentratorIDAndPortsID.concentratorID ==
+                                            currentConcentrator->concentratorID;
+                                 })};
+
+            //Для каждого порта этого концентратора
+            for (auto &port: concentratorIDAndPortsID->portsID)
             {
-                //Если ID концентратора равно ID концентратора текущего узла
-                if (concentratorIDAndPortsID.concentratorID == currentConcentrator->concentratorID)
+                //Искать в таблице линков эти порты (получить линк текущего концентратора)
+                auto itLink{std::find_if(tempLinks.begin(), tempLinks.end(),
+                                         [port](Link link)
+                                         {
+                                             return link.port1 == port || link.port2 == port;
+                                         }
+                )};
+
+                //Для каждого соответствия ID концентратора и его портов (найти другой концентратор по его порту из полученного линка ранее)
+                for (auto &concentratorIDAndPortsID2: concentratorsIdAndPortsId)
                 {
-                    //Для каждого порта этого концентратора
-                    for (auto& port : concentratorIDAndPortsID.portsID)
+                    //Искать в таблице соответствия ID концентратора и его портов порт другого (нового уровня) концентратора
+                    if (concentratorIDAndPortsID2.concentratorID != currentConcentrator->concentratorID)
                     {
-                        //Искать в таблице линков эти порты (получить линк текущего концентратора)
-                        auto itLink{std::find_if(tempLinks.begin(), tempLinks.end(),
-                                                 [port](Link link){
-                                                     return link.port1 == port || link.port2 == port;
-                                                 }
-                        )};
+                        auto itNewPort{std::find_if(concentratorIDAndPortsID2.portsID.begin(),
+                                                    concentratorIDAndPortsID2.portsID.end(),
+                                                    [itLink](int port2)
+                                                    {
+                                                        return port2 == itLink->port1 || port2 == itLink->port2;
+                                                    })
+                        };
 
-
-                        //Для каждого соответствия ID концентратора и его портов (найти другой концентратор по его порту из полученного линка ранее)
-                        for (auto& concentratorIDAndPortsID2 : concentratorsIdAndPortsId)
+                        if (itNewPort != concentratorIDAndPortsID2.portsID.end())//TODO это условие лишнее?
                         {
-                            //Искать в таблице соответствия ID концентратора и его портов порт другого (нового уровня) концентратора
-                            if (concentratorIDAndPortsID2.concentratorID != currentConcentrator->concentratorID)
-                            {
-                                auto itNewPort{std::find_if(concentratorIDAndPortsID2.portsID.begin(),
-                                                            concentratorIDAndPortsID2.portsID.end(),
-                                                            [itLink](int port2)
-                                                            {
-                                                                return port2 == itLink->port1 || port2 == itLink->port2;
-                                                            })
-                                };
+                            Link newLink{*itNewPort,
+                                         (*itNewPort == itLink->port1 ? itLink->port2 : itLink->port1)};
 
-                                if (itNewPort != concentratorIDAndPortsID2.portsID.end())//TODO это условие лишнее?
-                                {
-                                    Link newLink{*itNewPort,
-                                                 (*itNewPort == itLink->port1 ? itLink->port2 : itLink->port1)};
+                            currentConcentrator->topologies.emplace_back<Topology>(
+                                    {concentratorIDAndPortsID2.concentratorID, currentConcentrator, newLink,
+                                     false, {}});
 
-                                    currentConcentrator->topologies.emplace_back<Topology>(
-                                            {concentratorIDAndPortsID2.concentratorID, currentConcentrator, newLink,
-                                             false, {}});
+                            tempLinks.erase(itLink);
 
-                                    tempLinks.erase(itLink);
-
-                                    break;
-                                }
-                            }
+                            break;
                         }
                     }
-
-                    break;
                 }
             }
 
@@ -858,48 +857,48 @@ private:
      */
     void concentratorDone()
     {
-        std::cout << "nodeDone" << '\n';
-        //std::cout << currentNode->portEnumerationConcentratorID << '\n';
-        //std::cout << currentConcentrator->concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator.front().portIDPairedWithConcentrator << "\n";
-
+        //Отметить текущий узел сделанным
         currentConcentrator->final = true;
 
-        if (!isLastConcentrator())
-        {
-            return;
-        }
-
+        //Если текущий концентратор является корнем топологии
         if (currentConcentrator == &topology)
         {
+            //Завершить
             return;
         }
 
-        for (auto it{currentConcentrator->previousNode->topologies.begin()}; it != currentConcentrator->previousNode->topologies.end(); ++it)
+        //Если текущий узел этого уровня последний
+        if (!isLastConcentrator())
         {
-            if (currentConcentrator == &*it)
-            {
-                if (++it != currentConcentrator->previousNode->topologies.end())
-                {
-                    currentConcentrator = &*(it);
+            //Завершить
+            return;
+        }
 
-                    //std::cout << "portIDPairedWithConcentrator: " <<  currentConcentrator->concentratorIDAndMACTableAnalog.front().MACTableAnalogPairedWithConcentrator.front().portIDPairedWithConcentrator << '\n';
-                    //std::cout << "portIDPairedWithConcentrator: " <<  currentConcentrator->concentratorIDAndMACTableAnalog.back().MACTableAnalogPairedWithConcentrator.back().portIDPairedWithConcentrator << '\n';
+        //Получить итератор текущего концентратора этого уровня
+        auto it{currentConcentrator->previousNode->topologies.begin()};
+        //Пока не получен итератор текущего концентратора
+        while (&*it != currentConcentrator)
+        {
+            //Перейти к следующему концентратору
+            ++it;
+        }
 
-                    return;
+        //Если "следующий" концентратор этого уровня присутствует
+        if (++it != currentConcentrator->previousNode->topologies.end())
+        {
+            //Назначить "следующего" текущим концентратором
+            currentConcentrator = &*(it);
 
-                    /*if (!currentNode->nodes.empty())
-                    {
-                        currentNode = &currentNode->nodes.front();
-                    }*/
-
-                } else
-                {
-                    currentConcentrator = currentConcentrator->previousNode;
-                    concentratorDone();
-                }
-
-                break;
-            }
+            //Завершить
+            return;
+        }
+            //Текущий концентратор этого уровня последний
+        else
+        {
+            //Назначить текущим концентратором выше по линку
+            currentConcentrator = currentConcentrator->previousNode;
+            //Рекурсивно определить сделанный концентратор
+            concentratorDone();
         }
     }
 
