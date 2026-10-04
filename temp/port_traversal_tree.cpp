@@ -670,10 +670,13 @@ struct Topology
     int concentratorID{};
     //Предыдущий узел (концентратор) дерева топологии
     Topology* previousNode{};
+    //Предыдущая развилка дерева топологии
+    Topology* previousFork{};
     //Обратный линк
     Link reverseLink{};
     //Признак завершения поиска линков в этом узле и во всех подузлах дерева
     bool final{};
+    std::list<std::list<int>> concentratorsByBranches;
 
     //Контейнер узлов дерева поиска линков (рекурсивный)
     std::list<Topology> topologies{};
@@ -684,12 +687,16 @@ struct TestTopology
     int concentratorID;
     int concentratorIDOfNextLevel;
     Link link;
+    int previousFork;
+    std::list<std::list<int>> concentratorsByBranches;
 
     bool operator == (const TestTopology& rhs) const
     {
         if (this->concentratorID == rhs.concentratorID &&
             this->concentratorIDOfNextLevel == rhs.concentratorIDOfNextLevel &&
-            this->link == rhs.link) return true;//TODO сделать проверку на равенство размеров
+            this->link == rhs.link &&
+            this->previousFork == rhs.previousFork &&
+            this->concentratorsByBranches == rhs.concentratorsByBranches) return true;//TODO сделать проверку на равенство размеров
 
         return false;
     }
@@ -708,6 +715,7 @@ public:
     {
         rootConcentrator = in_rootConcentrator;
         tempLinks = in_links;
+
     }
 
     void addConcentratorIDAndPortsID(std::list<ConcentratorIDAndPortsID> in_concentratorsIdAndPortsId)
@@ -763,6 +771,7 @@ public:
                     //Искать в таблице соответствия ID концентратора и его портов порт другого (нового уровня) концентратора
                     if (concentratorIDAndPortsID2.concentratorID != currentConcentrator->concentratorID)
                     {
+                        //
                         auto itNewPort{std::find_if(concentratorIDAndPortsID2.portsID.begin(),
                                                     concentratorIDAndPortsID2.portsID.end(),
                                                     [itLink](int port2)
@@ -776,9 +785,10 @@ public:
                             Link newLink{*itNewPort,
                                          (*itNewPort == itLink->port1 ? itLink->port2 : itLink->port1)};
 
+                            //Добавить концентратор
                             currentConcentrator->topologies.emplace_back<Topology>(
-                                    {concentratorIDAndPortsID2.concentratorID, currentConcentrator, newLink,
-                                     false, {}});
+                                    {concentratorIDAndPortsID2.concentratorID, currentConcentrator, {}, newLink,
+                                     false, {}, {}});
 
                             tempLinks.erase(itLink);
 
@@ -788,16 +798,85 @@ public:
                 }
             }
 
+            auto addConcentratorIDToOtherForks{
+                    [](Topology* currentPreviousFork2, int concentratorID)
+                    {
+                        while (currentPreviousFork2)
+                        {
+                            std::list<int> *elementOfConcentratorsByBranches;
+
+                            auto it{currentPreviousFork2->concentratorsByBranches.begin()};
+                            while (it != currentPreviousFork2->concentratorsByBranches.end())
+                            {
+                                auto it2{std::find(it->begin(), it->end(), concentratorID)};
+                                if (it2 != it->end()) elementOfConcentratorsByBranches = &*it;
+                                ++it;
+                            }
+
+                            elementOfConcentratorsByBranches->emplace_back(concentratorID);
+
+                            currentPreviousFork2 = currentPreviousFork2->previousFork;
+                        }
+
+                    }
+            };
+
+            if (currentConcentrator->topologies.size() > 1)
+            {
+                currentPreviousFork = currentConcentrator;
+
+                currentPreviousFork->concentratorsByBranches.resize(currentConcentrator->topologies.size());
+                auto it{currentPreviousFork->concentratorsByBranches.begin()};
+                for (auto &concentrator: currentConcentrator->topologies)
+                {
+                    concentrator.previousFork = currentPreviousFork;
+                    it->emplace_back(concentrator.concentratorID);
+                    addConcentratorIDToOtherForks(currentPreviousFork, concentrator.concentratorID);
+                    ++it;
+                }
+            }
+            else
+            {
+                std::list<int> *elementOfConcentratorsByBranches;
+
+                auto it{currentPreviousFork->concentratorsByBranches.begin()};
+                while (it != currentPreviousFork->concentratorsByBranches.end())
+                {
+                    auto it2{std::find(it->begin(), it->end(), currentConcentrator->concentratorID)};
+                    if (it2 != it->end()) elementOfConcentratorsByBranches = &*it;
+                    ++it;
+                }
+
+                currentConcentrator->topologies.front().previousFork = currentPreviousFork;
+                elementOfConcentratorsByBranches->emplace_back(currentConcentrator->topologies.front().concentratorID);
+                addConcentratorIDToOtherForks(currentPreviousFork, currentConcentrator->topologies.front().concentratorID);
+            }
+
+
+
+
+
+
             //Назначить новый узел текущим узлом дерева поиска линков
             currentConcentrator = &currentConcentrator->topologies.front();
         }
 
         output();
+
+        std::cout << "Current concentrator: " << currentConcentrator->concentratorID << '\n';
     }
 
     std::list<TestTopology> testTopology()
     {
         return containerOfTestTopology;
+    }
+
+    std::list<Link> definePath(int fromConcentrator, int toConcentrator)
+    {
+        Topology* currentConcentrator{searchConcentrator(&topology, fromConcentrator)};
+
+        std::cout << currentConcentrator->concentratorID;
+
     }
 
 
@@ -809,6 +888,8 @@ private:
 
     int rootConcentrator{};
 
+    Topology* currentPreviousFork{};
+
     std::list<Link> tempLinks;
 
     std::list<ConcentratorIDAndPortsID> concentratorsIdAndPortsId;
@@ -816,6 +897,25 @@ private:
     std::list<TestTopology> containerOfTestTopology;
 
     int count{};
+
+    Topology* searchConcentrator(Topology* in_topology, int concentratorID)
+    {
+        auto branch{topology.concentratorsByBranches.begin()};
+        auto topology2{topology.topologies.begin()};
+        for (; branch != topology.concentratorsByBranches.end(); ++branch, ++topology2)
+        {
+            if (topology2->concentratorID == concentratorID)
+            {
+                return &*topology2;
+            }
+
+            if (std::find(branch->begin(), branch->end(), concentratorID) != branch->end())
+            {
+                std::cout << "qqq";
+                searchConcentrator(&*topology2, concentratorID);
+            }
+        }
+    }
 
     bool isLastConcentrator()
     {
@@ -903,12 +1003,36 @@ private:
     void output()
     {
 
+        std::cout << topology.concentratorID << ". Concentrators: ";
+        for (auto& branch : topology.concentratorsByBranches)
+        {
+            for (auto concentratorID : branch)
+            {
+                std::cout << concentratorID << ", ";
+            }
+
+            std::cout << " | ";
+        }
+        std::cout << '\n';
+        containerOfTestTopology.emplace_back<TestTopology>({{}, topology.concentratorID, {{}, {}}, {}, topology.concentratorsByBranches});
 
         for (auto &concentrator: topology.topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -917,8 +1041,20 @@ private:
         for (auto &concentrator: it->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -927,8 +1063,20 @@ private:
         for (auto &concentrator: it2->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -937,8 +1085,20 @@ private:
         for (auto &concentrator: it3->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -947,8 +1107,20 @@ private:
         for (auto &concentrator: it4->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -957,8 +1129,20 @@ private:
         for (auto &concentrator: it5->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
 
@@ -967,8 +1151,20 @@ private:
         for (auto &concentrator: it6->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
         auto it7{it6->topologies.begin()};
@@ -976,8 +1172,20 @@ private:
         for (auto &concentrator: it7->topologies)
         {
             std::cout << concentrator.previousNode->concentratorID << ": " << concentrator.concentratorID << ". Link: "
-                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << '\n';
-            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2}});
+                      << concentrator.reverseLink.port1 << '-' << concentrator.reverseLink.port2 << ". PrevFork: " << concentrator.previousFork->concentratorID << ". Concentrators: ";
+            for (auto& branch : concentrator.concentratorsByBranches)
+            {
+                for (auto concentratorID : branch)
+                {
+                    std::cout << concentratorID << ", ";
+                }
+
+                std::cout << " | ";
+            }
+
+            std::cout << '\n';
+            containerOfTestTopology.emplace_back<TestTopology>({concentrator.previousNode->concentratorID, concentrator.concentratorID, {concentrator.reverseLink.port1, concentrator.reverseLink.port2},
+                                                                concentrator.previousFork->concentratorID, concentrator.concentratorsByBranches});
 
         }
     }
@@ -1019,30 +1227,7 @@ int main()
 
     }
 
-    /*bypassingPorts.addToNewLevel(0, 17);
-    bypassingPorts.addToCurrentLevel(0, 16);
-    bypassingPorts.addToCurrentLevel(0, 23);
-    bypassingPorts.addToCurrentLevel(0, 22);
 
-    bypassingPorts.addToNewLevel(2, 113);
-    bypassingPorts.addToCurrentLevel(2, 112);
-
-    bypassingPorts.addToNewLevel(3, 131);
-    bypassingPorts.addToCurrentLevel(3, 132);
-
-    bypassingPorts.nodeDone();
-    bypassingPorts.nodeDone();
-
-    bypassingPorts.addToNewLevel(6, 122);
-    bypassingPorts.addToCurrentLevel(6, 121);
-    bypassingPorts.addToCurrentLevel(6, 1224);
-
-    bypassingPorts.nodeDone();
-    bypassingPorts.nodeDone();
-    //bypassingPorts.nodeDone();
-    //bypassingPorts.nodeDone();
-    //bypassingPorts.nodeDone();
-    //bypassingPorts.nodeDone();*/
 
     std::list<Link> originalLinks{{
                                           {102, 91}, {16, 41}, {17, 81}, {23, 61}, {22, 21}, {82, 101}, {92, 122}, {1224, 1748}, {121, 112}, {132, 71}, {131, 113}, {42, 51}, {43, 241}
@@ -1079,19 +1264,20 @@ int main()
 
     std::list<TestTopology> testTopology{
             {
-                    {62, 8, {81, 17}},
-                    {62, 4, {41, 16}},
-                    {62, 6, {61, 23}},
-                    {62, 2, {21, 22}},
-                    {4, 5, {51, 42}},
-                    {4, 24, {241, 43}},
-                    {8, 10, {101, 82}},
-                    {10, 9, {91, 102}},
-                    {9, 12, {122, 92}},
-                    {12, 17, {1748, 1224}},
-                    {12, 11, {112, 121}},
-                    {11, 13, {131, 113}},
-                    {13, 7, {71, 132}},
+                    {0, 62, {0, 0}, 0, {{8, 10, 9, 12}, {4}, {6}, {2}}},
+                    {62, 8, {81, 17}, 62},
+                    {62, 4, {41, 16}, 62, {{5}, {24}}},
+                    {62, 6, {61, 23}, 62},
+                    {62, 2, {21, 22}, 62},
+                    {4, 5, {51, 42}, 4},
+                    {4, 24, {241, 43}, 4},
+                    {8, 10, {101, 82}, 62},
+                    {10, 9, {91, 102}, 62},
+                    {9, 12, {122, 92}, 62, {{17}, {11, 13, 7}}},
+                    {12, 17, {1748, 1224}, 12},
+                    {12, 11, {112, 121}, 12},
+                    {11, 13, {131, 113}, 12},
+                    {13, 7, {71, 132}, 12},
 
             }
     };
@@ -1100,6 +1286,8 @@ int main()
     else std::cout << "Not OK!" << '\n';
     if (networkTopologyProcessing.testTopology() == testTopology) std::cout << "OK!" << '\n';
     else std::cout << "Not OK!" << '\n';
+
+    networkTopologyProcessing.definePath(11, 5);
 
 
     return 0;
