@@ -799,8 +799,10 @@ public:
             }
 
             auto addConcentratorIDToOtherForks{
-                    [](Topology* currentPreviousFork2, int concentratorID)
+                    [this](Topology* currentPreviousFork2, int currentConcentratorID, int concentratorID)
                     {
+                        //if (currentPreviousFork2)
+                        //{
                         while (currentPreviousFork2)
                         {
                             std::list<int> *elementOfConcentratorsByBranches;
@@ -808,48 +810,44 @@ public:
                             auto it{currentPreviousFork2->concentratorsByBranches.begin()};
                             while (it != currentPreviousFork2->concentratorsByBranches.end())
                             {
-                                auto it2{std::find(it->begin(), it->end(), concentratorID)};
-                                if (it2 != it->end()) elementOfConcentratorsByBranches = &*it;
+                                auto it2{std::find(it->begin(), it->end(), currentConcentratorID)};
+                                if (it2 != it->end())
+                                {
+                                    it->emplace_back(concentratorID);
+                                    break;
+                                }
                                 ++it;
                             }
 
-                            elementOfConcentratorsByBranches->emplace_back(concentratorID);
+                            //elementOfConcentratorsByBranches->emplace_back(concentratorID);
 
                             currentPreviousFork2 = currentPreviousFork2->previousFork;
                         }
-
+                        //}
                     }
             };
 
             if (currentConcentrator->topologies.size() > 1)
             {
-                currentPreviousFork = currentConcentrator;
+                //currentPreviousFork = currentConcentrator;
 
-                currentPreviousFork->concentratorsByBranches.resize(currentConcentrator->topologies.size());
-                auto it{currentPreviousFork->concentratorsByBranches.begin()};
+                currentConcentrator->concentratorsByBranches.resize(currentConcentrator->topologies.size());
+                auto it{currentConcentrator->concentratorsByBranches.begin()};
                 for (auto &concentrator: currentConcentrator->topologies)
                 {
-                    concentrator.previousFork = currentPreviousFork;
+                    concentrator.previousFork = currentConcentrator;
                     it->emplace_back(concentrator.concentratorID);
-                    addConcentratorIDToOtherForks(currentPreviousFork, concentrator.concentratorID);
+                    addConcentratorIDToOtherForks(currentConcentrator->previousFork, currentConcentrator->concentratorID, concentrator.concentratorID);
                     ++it;
                 }
+
+
             }
             else
             {
-                std::list<int> *elementOfConcentratorsByBranches;
-
-                auto it{currentPreviousFork->concentratorsByBranches.begin()};
-                while (it != currentPreviousFork->concentratorsByBranches.end())
-                {
-                    auto it2{std::find(it->begin(), it->end(), currentConcentrator->concentratorID)};
-                    if (it2 != it->end()) elementOfConcentratorsByBranches = &*it;
-                    ++it;
-                }
-
-                currentConcentrator->topologies.front().previousFork = currentPreviousFork;
-                elementOfConcentratorsByBranches->emplace_back(currentConcentrator->topologies.front().concentratorID);
-                addConcentratorIDToOtherForks(currentPreviousFork, currentConcentrator->topologies.front().concentratorID);
+                currentConcentrator->topologies.front().previousFork = currentConcentrator->previousFork;
+                //elementOfConcentratorsByBranches->emplace_back(currentConcentrator->topologies.front().concentratorID);
+                addConcentratorIDToOtherForks(currentConcentrator->previousFork, currentConcentrator->concentratorID, currentConcentrator->topologies.front().concentratorID);
             }
 
 
@@ -873,9 +871,9 @@ public:
 
     std::list<Link> definePath(int fromConcentrator, int toConcentrator)
     {
-        Topology* currentConcentrator{searchConcentrator(&topology, fromConcentrator)};
+        Topology* currentConcentrator2{searchConcentrator(fromConcentrator)};
 
-        std::cout << currentConcentrator->concentratorID;
+        std::cout << currentConcentrator2->concentratorID << " " << currentConcentrator2->reverseLink.port1 << " " << currentConcentrator2->reverseLink.port2;
 
     }
 
@@ -888,7 +886,7 @@ private:
 
     int rootConcentrator{};
 
-    Topology* currentPreviousFork{};
+    //Topology* currentPreviousFork{};
 
     std::list<Link> tempLinks;
 
@@ -898,23 +896,45 @@ private:
 
     int count{};
 
-    Topology* searchConcentrator(Topology* in_topology, int concentratorID)
+    Topology* searchConcentrator(int concentratorID)
     {
-        auto branch{topology.concentratorsByBranches.begin()};
-        auto topology2{topology.topologies.begin()};
-        for (; branch != topology.concentratorsByBranches.end(); ++branch, ++topology2)
+        Topology *currentFork{&topology};
+        Topology* currentTopology;
+        int currentConcentratorID{};
+
+        while (currentConcentratorID != concentratorID)
         {
-            if (topology2->concentratorID == concentratorID)
+            auto branch{currentFork->concentratorsByBranches.begin()};
+            auto topology2{currentFork->topologies.begin()};
+            for (; branch != currentFork->concentratorsByBranches.end(); ++branch, ++topology2)
             {
-                return &*topology2;
+                if (std::find(branch->begin(), branch->end(), concentratorID) != branch->end())
+                {
+                    break;
+                }
             }
 
-            if (std::find(branch->begin(), branch->end(), concentratorID) != branch->end())
+            currentTopology = &*topology2;
+            if (currentTopology->concentratorID == concentratorID)
             {
-                std::cout << "qqq";
-                searchConcentrator(&*topology2, concentratorID);
+                currentConcentratorID = currentTopology->concentratorID;
+                continue;
             }
+            while (currentTopology->topologies.size() == 1)
+            {
+                if (currentTopology->concentratorID == concentratorID)
+                {
+                    currentConcentratorID = currentTopology->concentratorID;
+                    break;
+                }
+                currentTopology = &currentTopology->topologies.front();
+            }
+            std::cout << "qqq";
+            currentFork = currentTopology;
+            currentConcentratorID = currentTopology->concentratorID;
         }
+
+        return currentTopology;
     }
 
     bool isLastConcentrator()
@@ -1264,7 +1284,7 @@ int main()
 
     std::list<TestTopology> testTopology{
             {
-                    {0, 62, {0, 0}, 0, {{8, 10, 9, 12}, {4}, {6}, {2}}},
+                    {0, 62, {0, 0}, 0, {{8, 10, 9, 12, 17, 11, 13, 7}, {4, 5, 24}, {6}, {2}}},
                     {62, 8, {81, 17}, 62},
                     {62, 4, {41, 16}, 62, {{5}, {24}}},
                     {62, 6, {61, 23}, 62},
