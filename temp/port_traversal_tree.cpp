@@ -871,10 +871,54 @@ public:
 
     std::list<Link> definePath(int fromConcentrator, int toConcentrator)
     {
-        Topology* currentConcentrator2{searchConcentrator(fromConcentrator)};
+        Topology* foundFromConcentrator{searchConcentrator(fromConcentrator)};
 
-        std::cout << currentConcentrator2->concentratorID << " " << currentConcentrator2->reverseLink.port1 << " " << currentConcentrator2->reverseLink.port2;
+        std::cout << foundFromConcentrator->concentratorID << " " << foundFromConcentrator->reverseLink.port1 << " " << foundFromConcentrator->reverseLink.port2 << '\n';
 
+        //Искать в ближней развилке
+        bool foundInFork{};
+        auto branchToConcentrator{foundFromConcentrator->previousFork->concentratorsByBranches.begin()};
+        auto topology2{foundFromConcentrator->previousFork->topologies.begin()};
+        for (; branchToConcentrator != foundFromConcentrator->previousFork->concentratorsByBranches.end(); ++branchToConcentrator, ++topology2)
+        {
+            if (std::find(branchToConcentrator->begin(), branchToConcentrator->end(), toConcentrator) != branchToConcentrator->end())
+            {
+                foundInFork = true;
+                break;
+            }
+        }
+
+        if (foundInFork)
+        {
+            //Искать вглубь
+            //Искать ветку fromConcentrator
+            bool foundInFork2{};
+            auto branchFromConcentrator{foundFromConcentrator->previousFork->concentratorsByBranches.begin()};
+            auto topology3{foundFromConcentrator->previousFork->topologies.begin()};
+            for (; branchFromConcentrator != foundFromConcentrator->previousFork->concentratorsByBranches.end(); ++branchFromConcentrator, ++topology3)
+            {
+                if (std::find(branchFromConcentrator->begin(), branchFromConcentrator->end(), fromConcentrator) != branchFromConcentrator->end())
+                {
+                    foundInFork = true;
+                    break;
+                }
+            }
+
+            //Если оба концентратора находятся в одной ветке
+            if (branchToConcentrator == branchFromConcentrator)
+            {
+                //В начале подняться до развилки заполняя линки. Если искомый концентратор не будет найден - удалить линки, и заново добавляя их, обходить ветки
+            }
+                //Концентраторы в разных ветках
+            else
+            {
+                //Подняться до развилки, заполняя линки. И уже перейти в нужную ветку...
+            }
+        }
+        else
+        {
+            //Искать вверх
+        }
     }
 
 
@@ -929,7 +973,7 @@ private:
                 }
                 currentTopology = &currentTopology->topologies.front();
             }
-            std::cout << "qqq";
+
             currentFork = currentTopology;
             currentConcentratorID = currentTopology->concentratorID;
         }
