@@ -927,13 +927,18 @@ public:
 
     std::list<Link> definePath(int fromConcentrator, int toConcentrator)
     {
+
         Topology* foundFromConcentrator{searchConcentrator(fromConcentrator)};
+
         Topology* foundToConcentrator{};
+
         Topology *nextConcentrator{foundFromConcentrator};
+
+
 
         std::list<Link> links;
 
-        std::cout << foundFromConcentrator->concentratorID << " " << foundFromConcentrator->reverseLink.port1 << " " << foundFromConcentrator->reverseLink.port2 << '\n';
+        //std::cout << foundFromConcentrator->concentratorID << " " << foundFromConcentrator->reverseLink.port1 << " " << foundFromConcentrator->reverseLink.port2 << '\n';
 
 
         //1. Если концентратор источник не является развилкой - выполнить пункт 2. В противном случае - пункт 3.
@@ -949,6 +954,93 @@ public:
         //4. Спуститься вниз по определённой вилке, добавляя линки. При этом
         //проверять концентратор назначения. Если концентратор найден - выйти из функции.
 
+        bool destinationConcentratorFound{};
+        while (nextConcentrator->concentratorID != toConcentrator && !destinationConcentratorFound)
+        {
+            //
+            //Замена закомментированного
+            //std::list<int>* branchToConcentrator{};
+            if (nextConcentrator->topologies.size() > 1)
+            {
+
+
+                //Искать ветку концентратора назначения
+                std::list<int>* branchToConcentrator = searchConcentratorBranch(nextConcentrator, toConcentrator);
+                //Замена закомментированного
+                //branchToConcentrator = searchConcentratorBranch(nextConcentrator, toConcentrator);
+
+                std::cout << "1nextConcentrator: " << nextConcentrator->concentratorID << ' ';
+                if (branchToConcentrator)
+                {
+                    std::cout << "branchToConcentrator" << ' ';
+
+                    destinationConcentratorFound = true;
+                    //Искать ветку концентратора источника
+                    std::list<int>* branchFromConcentrator = searchConcentratorBranch(nextConcentrator, fromConcentrator);
+                    if (branchToConcentrator == branchFromConcentrator)
+                    {
+                        links.clear();
+                        nextConcentrator = foundFromConcentrator;
+                        std::cout << "links.clear()" << ' ';
+                    }
+                }
+                else
+                {
+                    links.emplace_back(nextConcentrator->reverseLink);
+                    nextConcentrator = nextConcentrator->previousNode;
+                    std::cout << "2nextConcentrator: " << nextConcentrator->concentratorID << ' ';
+                }
+            }
+            else
+            {
+                links.emplace_back(nextConcentrator->reverseLink);
+                nextConcentrator = nextConcentrator->previousNode;
+                std::cout << "3nextConcentrator: " << nextConcentrator->concentratorID << ' ';
+            }
+            //Замена закомментированного
+            /*if (nextConcentrator->topologies.size() <= 1 || !branchToConcentrator)
+            {
+                links.emplace_back(nextConcentrator->reverseLink);
+                nextConcentrator = nextConcentrator->previousNode;
+            }*/
+        }
+
+        std::cout << '\n' << "nextConcentrator: " << nextConcentrator->concentratorID << ' ';
+
+        std::cout << "Links: ";
+        for (auto& link : links)
+        {
+            std::cout << link.port1 << '-' << link.port2 << ',';
+        }
+        std::cout << '\n';
+
+        while (nextConcentrator->concentratorID != toConcentrator)
+        {
+            if (nextConcentrator->topologies.size() > 1)
+            {
+                //Определить ветку где находится toConcentrator
+                //bool foundInFork3{};
+                auto branchToConcentrator3{
+                        nextConcentrator->concentratorsByBranches.begin()};
+                auto topology4{nextConcentrator->topologies.begin()};
+                for (; branchToConcentrator3 !=
+                       nextConcentrator->concentratorsByBranches.end(); ++branchToConcentrator3, ++topology4)
+                {
+                    if (std::find(branchToConcentrator3->begin(), branchToConcentrator3->end(),
+                                  toConcentrator) != branchToConcentrator3->end())
+                    {
+                        nextConcentrator = &*topology4;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                nextConcentrator = &nextConcentrator->topologies.front();
+            }
+
+            links.emplace_back(nextConcentrator->reverseLink);
+        }
 
 
 
@@ -967,7 +1059,8 @@ public:
 
 
 
-        while (!foundToConcentrator)
+
+        /*while (!foundToConcentrator)
         {
             std::cout << "qqq";
 
@@ -1127,7 +1220,7 @@ public:
                 std::cout << link.port1 << '-' << link.port2 << ',';
             }
             std::cout << '\n';
-        }
+        }*/
 
         std::cout << "Links: ";
         for (auto& link : links)
@@ -1161,10 +1254,10 @@ private:
     Topology* searchConcentrator(int concentratorID)
     {
         Topology *currentFork{&topology};
-        Topology* currentTopology;
+        Topology* currentTopology{&topology};
         int currentConcentratorID{};
 
-        while (currentConcentratorID != concentratorID)
+        while (currentConcentratorID != concentratorID && concentratorID != topology.concentratorID)
         {
             auto branch{currentFork->concentratorsByBranches.begin()};
             auto topology2{currentFork->topologies.begin()};
@@ -1569,7 +1662,97 @@ int main()
     if (networkTopologyProcessing.testTopology() == testTopology) std::cout << "OK!" << '\n';
     else std::cout << "Not OK!" << '\n';
 
-    networkTopologyProcessing.definePath(12, 13);
+
+    auto linksFromToFunction1{networkTopologyProcessing.definePath(11, 5)};//Links: 112-121,122-92,91-102,101-82,81-17,41-16,51-42
+    std::list<Link> linksFromTo1{{{112, 121}, {122, 92}, {91, 102}, {101, 82}, {81, 17}, {41, 16}, {51, 42}}};
+    if (linksFromToFunction1 == linksFromTo1) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction2{networkTopologyProcessing.definePath(5, 11)};//Links: 51-42,41-16,81-17,101-82,91-102,122-92,112-121
+    std::list<Link> linksFromTo2{{{51, 42}, {41, 16}, {81, 17}, {101, 82}, {91, 102}, {122, 92}, {112, 121}}};
+    if (linksFromToFunction2 == linksFromTo2) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction3{networkTopologyProcessing.definePath(13, 12)};//Links: 131-113,112-121
+    std::list<Link> linksFromTo3{{{131, 113}, {112, 121}}};
+    if (linksFromToFunction3 == linksFromTo3) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction4{networkTopologyProcessing.definePath(12, 7)};
+    std::list<Link> linksFromTo4{{{112, 121}, {131, 113}, {71, 132}}};
+    if (linksFromToFunction4 == linksFromTo4) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction5{networkTopologyProcessing.definePath(7, 62)};
+    std::list<Link> linksFromTo5{{{71, 132}, {131, 113}, {112, 121}, {122, 92}, {91, 102}, {101, 82}, {81, 17}}};
+    if (linksFromToFunction5 == linksFromTo5) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction6{networkTopologyProcessing.definePath(62, 7)};
+    std::list<Link> linksFromTo6{{{81, 17}, {101, 82}, {91, 102}, {122, 92}, {112, 121}, {131, 113}, {71, 132}}};
+    if (linksFromToFunction6 == linksFromTo6) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction7{networkTopologyProcessing.definePath(12, 11)};
+    std::list<Link> linksFromTo7{{{112, 121}}};
+    if (linksFromToFunction7 == linksFromTo7) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction8{networkTopologyProcessing.definePath(11, 12)};
+    std::list<Link> linksFromTo8{{{112, 121}}};
+    if (linksFromToFunction8 == linksFromTo8) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction9{networkTopologyProcessing.definePath(12, 9)};
+    std::list<Link> linksFromTo9{{{122, 92}}};
+    if (linksFromToFunction9 == linksFromTo9) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction10{networkTopologyProcessing.definePath(9, 12)};
+    std::list<Link> linksFromTo10{{{122, 92}}};
+    if (linksFromToFunction10 == linksFromTo10) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction11{networkTopologyProcessing.definePath(62, 12)};
+    std::list<Link> linksFromTo11{{{81, 17}, {101, 82}, {91, 102}, {122, 92}}};
+    if (linksFromToFunction11 == linksFromTo11) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction12{networkTopologyProcessing.definePath(12, 62)};
+    std::list<Link> linksFromTo12{{{122, 92}, {91, 102}, {101, 82}, {81, 17}}};
+    if (linksFromToFunction12 == linksFromTo12) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction13{networkTopologyProcessing.definePath(62, 8)};
+    std::list<Link> linksFromTo13{{{81, 17}}};
+    if (linksFromToFunction13 == linksFromTo13) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction14{networkTopologyProcessing.definePath(8, 62)};
+    std::list<Link> linksFromTo14{{{81, 17}}};
+    if (linksFromToFunction14 == linksFromTo14) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction15{networkTopologyProcessing.definePath(6, 62)};
+    std::list<Link> linksFromTo15{{{61, 23}}};
+    if (linksFromToFunction15 == linksFromTo15) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction16{networkTopologyProcessing.definePath(62, 6)};
+    std::list<Link> linksFromTo16{{{61, 23}}};
+    if (linksFromToFunction16 == linksFromTo16) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction17{networkTopologyProcessing.definePath(62, 4)};
+    std::list<Link> linksFromTo17{{{41, 16}}};
+    if (linksFromToFunction17 == linksFromTo17) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
+    auto linksFromToFunction18{networkTopologyProcessing.definePath(4, 62)};
+    std::list<Link> linksFromTo18{{{41, 16}}};
+    if (linksFromToFunction18 == linksFromTo18) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
 
 
     return 0;
