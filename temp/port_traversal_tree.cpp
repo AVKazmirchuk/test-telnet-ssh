@@ -1470,14 +1470,15 @@ public:
         concentratorsIdAndPortsId = in_concentratorsIDAndPortsID;
     }
 
-    std::list<std::list<ReverseLink>> determineRings()
+    void determineRings()
     {
         auto link{links.rbegin()};
         while (link != links.rend())
         {
+
             auto concentratorIDAndPortsID{
                     std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
-                                 [this, link](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                 [link](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
                                  {
                                      auto foundConcentratorIDAndPortsID{
                                              std::find(concentratorIDAndPortsID.portsID.begin(),
@@ -1486,10 +1487,22 @@ public:
                                      {
                                          return true;
                                      }
+
+                                     return false;
                                  }
                     )};
 
-            std::list<int> endPorts{concentratorIDAndPortsID->portsID};
+            std::list<int> tmpEndPorts{concentratorIDAndPortsID->portsID};
+            std::list<int> endPorts;
+            std::cout << "qqq";
+            auto localLink{link}; ++localLink;
+            for (; localLink != links.rend(); ++localLink)
+            {
+                if (std::find(tmpEndPorts.begin(), tmpEndPorts.end(), localLink->port2) != tmpEndPorts.end())
+                {
+                    endPorts.push_back(localLink->port2);
+                }
+            }
 
             std::list<int> endPortsOfDirectBypass;
             std::list<int> endPortsOfReverseBypass;
@@ -1572,12 +1585,6 @@ public:
 
 
 
-                        auto iterByBeginPort{std::find_if(links.begin(), links.end(),
-                                                          [](Link ))};
-
-
-
-
                         auto concentratorIDAndPortsIDOfDirectBypass{
                                 std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
                                              [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
@@ -1591,7 +1598,25 @@ public:
                                                  }
                                              }
                                 )};
-                        endPortsOfDirectBypass = concentratorIDAndPortsIDOfDirectBypass->portsID;
+                        std::list<int> tmpEndPortsOfDirectBypass = concentratorIDAndPortsIDOfDirectBypass->portsID;
+
+                        auto linkOfDirectBypass{std::find_if(links.rbegin(), links.rend(),
+                                                             [ring](Link &link)
+                                                             {
+                                                                 if (link.port1 == ring->first.back().port1)
+                                                                 {
+                                                                     return true;
+                                                                 }
+                                                             })};
+                        auto localLinkOfDirectBypass{linkOfDirectBypass}; ++localLinkOfDirectBypass;
+                        for (; localLinkOfDirectBypass != links.rend(); ++localLinkOfDirectBypass)
+                        {
+                            if (std::find(tmpEndPortsOfDirectBypass.begin(), tmpEndPortsOfDirectBypass.end(), localLinkOfDirectBypass->port2) != tmpEndPortsOfDirectBypass.end())
+                            {
+                                endPortsOfDirectBypass.clear();
+                                endPortsOfDirectBypass.push_back(localLinkOfDirectBypass->port2);
+                            }
+                        }
 
                         auto concentratorIDAndPortsIDOfReverseBypass{
                                 std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
@@ -1606,7 +1631,25 @@ public:
                                                  }
                                              }
                                 )};
-                        endPortsOfReverseBypass = concentratorIDAndPortsIDOfReverseBypass->portsID;
+                        std::list<int> tmpEndPortsOfReverseBypass = concentratorIDAndPortsIDOfReverseBypass->portsID;
+
+                        auto linkOfReverseBypass{std::find_if(links.rbegin(), links.rend(),
+                                                              [ring](Link &link)
+                                                              {
+                                                                  if (link.port1 == ring->second.back().port1)
+                                                                  {
+                                                                      return true;
+                                                                  }
+                                                              })};
+                        auto localLinkOfReverseBypass{linkOfReverseBypass}; ++localLinkOfReverseBypass;
+                        for (; localLinkOfReverseBypass != links.rend(); ++localLinkOfReverseBypass)
+                        {
+                            if (std::find(tmpEndPortsOfReverseBypass.begin(), tmpEndPortsOfReverseBypass.end(), localLinkOfReverseBypass->port2) != tmpEndPortsOfReverseBypass.end())
+                            {
+                                endPortsOfReverseBypass.clear();
+                                endPortsOfReverseBypass.push_back(localLinkOfReverseBypass->port2);
+                            }
+                        }
 
 
 
@@ -1625,14 +1668,35 @@ public:
 
                     if (ring != differentLinksPairPorts.end())
                     {
+                        endPortsOfDirectBypass.clear();
+                        endPortsOfDirectBypass.push_back(ring->first.back().port2);
 
+                        endPortsOfReverseBypass.clear();
+                        endPortsOfReverseBypass.push_back(ring->second.back().port2);
                     }
                 }
             }
 
+            ++link;
+        }
 
+        for (auto &elem : differentLinksPairPorts)
+        {
+            std::cout << "--- ring ---" << '\n';
+            for (auto &first : elem.first)
+            {
+                std::cout << first.port1 << '-' << first.port2 << '\n';
+            }
+            std::cout << '\n';
+
+            for (auto &second : elem.second)
+            {
+                std::cout << second.port1 << '-' << second.port2 << '\n';
+            }
+            std::cout << '\n';
 
         }
+
 
     }
 
@@ -1835,6 +1899,40 @@ int main()
     else std::cout << "Not OK!" << '\n';
 
 
+
+    std::list<ConcentratorIDAndPortsID> concentratorsIDAndPortsID2 = {
+            {
+                    {1, {11}},
+                    {2, {21, 22, 23}},
+                    {3, {31, 32, 33}},
+                    {17, {171, 172}},
+                    {16, {161, 162, 163}},
+                    {18, {181}},
+                    {4, {41, 42, 43}},
+                    {5, {51, 52}},
+                    {6, {61, 62, 63, 64}},
+                    {13, {131, 132}},
+                    {14, {141, 142, 143}},
+                    {15, {151}},
+                    {21, {211, 212}},
+                    {7, {71, 72}},
+                    {8, {81, 82, 83}},
+                    {9, {91, 92}},
+                    {10, {101, 102, 103, 104}},
+                    {20, {201, 202}},
+                    {19, {191, 192}},
+                    {11, {111, 112, 113}},
+                    {12, {121, 122}}
+
+            }};
+
+    std::list<Link> originalLinks2{{
+                                           {21, 11}, {22, 31}, {23, 122}, {121, 113}, {33, 171}, {172, 161}, {32, 41}, {111, 102}, {112, 92}, {91, 83}, {163, 181}, {162, 43}, {42, 51},
+                                           {52, 61}, {103, 191}, {192, 201}, {202, 104}, {101, 82}, {81, 72}, {71, 64}, {62, 131}, {132, 141}, {63, 211}, {212, 142}, {143, 151}
+                                   }};
+
+    RingsDefinition ringsDefinition(originalLinks2, concentratorsIDAndPortsID2);
+    ringsDefinition.determineRings();
 
     return 0;
 }
