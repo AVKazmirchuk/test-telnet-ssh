@@ -10,6 +10,66 @@
 struct Link
 {
     //ID порта №1
+    int port1{};
+    //ID порта №2
+    int port2{};
+
+    bool operator == (const Link& rhs) const
+    {
+        if (this->port1 == rhs.port1 && this->port2 == rhs.port2) return true;//TODO сделать проверку на равенство размеров
+
+        return false;
+    }
+};
+
+/**
+ * Пара ID портов, образующих обратный линк
+ */
+struct ReverseLink
+{
+    //ID порта №1
+    int port2{};
+    //ID порта №2
+    int port1{};
+
+    bool operator == (const Link& rhs) const
+    {
+        if (this->port2 == rhs.port2 && this->port1 == rhs.port1) return true;//TODO сделать проверку на равенство размеров
+
+        return false;
+    }
+};
+
+/**
+ * Пара ID конечных портов, образующих развилки в прямых и обраттных обходах
+ */
+struct ForkForDirectAndReverseBypass
+{
+    //ID порта №1
+    int port1{};
+    //ID порта №2
+    int port2{};
+
+    bool isIdenticalPorts()
+    {
+        return port1 == port2;
+    }
+
+    bool operator == (ForkForDirectAndReverseBypass rhs) const
+    {
+        if (this->port1 == rhs.port1 && this->port2 == rhs.port2 ||
+            this->port1 == rhs.port2 && this->port2 == rhs.port1) return true;//TODO сделать проверку на равенство размеров
+
+        return false;
+    }
+};
+
+/**
+ * Пара ID портов одного концентратора разных линков
+ */
+struct DifferentLinksPairPorts
+{
+    //ID порта №1
     int port1;
     //ID порта №2
     int port2;
@@ -1042,186 +1102,6 @@ public:
             links.emplace_back(nextConcentrator->reverseLink);
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        /*while (!foundToConcentrator)
-        {
-            std::cout << "qqq";
-
-            //Искать ветку концентратора назначения
-            std::list<int>* branchToConcentrator = searchConcentratorBranch(foundFromConcentrator, toConcentrator);
-
-            //Если в ближней или в этой развилке найден концентратор назначения
-            if (branchToConcentrator)
-            {
-                std::cout << "www";
-                //Искать вглубь
-                //Искать ветку концентратора источника
-                std::list<int>* branchFromConcentrator = searchConcentratorBranch(foundFromConcentrator, fromConcentrator);
-
-                //Если оба концентратора находятся в одной ветке
-                if (branchToConcentrator == branchFromConcentrator)
-                {
-                    //В начале подняться до развилки заполняя линки. Если искомый концентратор не будет найден - удалить линки, и заново добавляя их, обходить ветки
-                    //Topology *nextConcentrator{foundFromConcentrator};
-                    while (nextConcentrator->concentratorID != toConcentrator &&
-                           nextConcentrator != foundFromConcentrator->previousFork)
-                    {
-                        links.emplace_back(nextConcentrator->reverseLink);
-                        nextConcentrator = nextConcentrator->previousNode;
-                        //std::cout << "aaa";
-                    }
-                    //Если выше найден
-                    if (nextConcentrator->concentratorID == toConcentrator)
-                    {
-                        //links.emplace_back(nextConcentrator->reverseLink);
-                        foundToConcentrator = nextConcentrator;
-                        break;
-                    }
-                        //Выше не найден. Искать вглубь
-                    else
-                    {
-                        links.clear();
-
-                        //nextConcentrator = foundFromConcentrator;
-                        while (nextConcentrator->concentratorID != toConcentrator)
-                        {
-
-                            while (nextConcentrator->concentratorID != toConcentrator &&
-                                   nextConcentrator->topologies.size() == 1)
-                            {
-                                links.emplace_back(nextConcentrator->topologies.front().reverseLink);
-                                nextConcentrator = &nextConcentrator->topologies.front();
-                            }
-
-                            if (nextConcentrator->concentratorID == toConcentrator)
-                            {
-                                foundToConcentrator = nextConcentrator;
-                                break;
-                            }
-
-                            if (nextConcentrator->topologies.size() > 1)
-                            {
-                                //Определить ветку где находится toConcentrator
-                                bool foundInFork3{};
-                                auto branchToConcentrator3{
-                                        foundFromConcentrator->previousFork->concentratorsByBranches.begin()};
-                                auto topology4{foundFromConcentrator->previousFork->topologies.begin()};
-                                for (; branchToConcentrator3 !=
-                                       foundFromConcentrator->previousFork->concentratorsByBranches.end(); ++branchToConcentrator3, ++topology4)
-                                {
-                                    if (std::find(branchToConcentrator3->begin(), branchToConcentrator3->end(),
-                                                  toConcentrator) != branchToConcentrator3->end())
-                                    {
-                                        foundInFork3 = true;
-                                        break;
-                                    }
-                                }
-
-                                links.emplace_back(nextConcentrator->topologies.front().reverseLink);
-                                nextConcentrator = &*topology4;
-                            }
-                        }
-                    }
-                }
-                    //Концентраторы находятся в разных ветках
-                else
-                {
-                    //Подняться до развилки, заполняя линки. И уже перейти в нужную ветку...
-                    //В начале подняться до развилки заполняя линки. Если искомый концентратор не будет найден - удалить линки, и заново добавляя их, обходить ветки
-                    //Topology *nextConcentrator{foundFromConcentrator};
-                    //std::cout << "zzz";
-                    while (nextConcentrator->concentratorID != toConcentrator &&
-                           nextConcentrator != foundFromConcentrator->previousFork)
-                    {
-                        links.emplace_back(nextConcentrator->reverseLink);
-                        nextConcentrator = nextConcentrator->previousNode;
-                    }
-
-                    if (nextConcentrator->concentratorID == toConcentrator)
-                    {
-                        foundToConcentrator = nextConcentrator;
-                        break;
-                    }
-
-                    //nextConcentrator = foundFromConcentrator;
-                    while (nextConcentrator->concentratorID != toConcentrator)
-                    {
-                        while (nextConcentrator->concentratorID != toConcentrator &&
-                               nextConcentrator->topologies.size() == 1)
-                        {
-                            links.emplace_back(nextConcentrator->topologies.front().reverseLink);
-                            nextConcentrator = &nextConcentrator->topologies.front();
-                        }
-
-                        if (nextConcentrator->concentratorID == toConcentrator)
-                        {
-                            foundToConcentrator = nextConcentrator;
-                            break;
-                        }
-
-                        if (nextConcentrator->topologies.size() > 1)
-                        {
-                            bool foundInFork3{};
-                            auto branchToConcentrator3{
-                                    foundFromConcentrator->previousFork->concentratorsByBranches.begin()};
-                            auto topology5{foundFromConcentrator->previousFork->topologies.begin()};
-                            for (; branchToConcentrator3 !=
-                                   foundFromConcentrator->previousFork->concentratorsByBranches.end(); ++branchToConcentrator3, ++topology5)
-                            {
-                                if (std::find(branchToConcentrator3->begin(), branchToConcentrator3->end(),
-                                              toConcentrator) != branchToConcentrator3->end())
-                                {
-                                    foundInFork3 = true;
-                                    break;
-                                }
-                            }
-
-                            links.emplace_back(nextConcentrator->topologies.front().reverseLink);
-                            nextConcentrator = &*topology5;
-                        }
-                    }
-                }
-            }
-                //В ближней или в этой развилке не найден концентратор назначения
-            else
-            {
-                //Искать в предыдущей развилке
-
-                //Topology *nextConcentrator{foundFromConcentrator};
-                while (nextConcentrator != foundFromConcentrator->previousFork)
-                {
-                    links.emplace_back(nextConcentrator->reverseLink);
-                    nextConcentrator = nextConcentrator->previousNode;
-                }
-
-            }
-
-            fromConcentrator = nextConcentrator->concentratorID;
-            std::cout << "Links: ";
-            for (auto& link : links)
-            {
-                std::cout << link.port1 << '-' << link.port2 << ',';
-            }
-            std::cout << '\n';
-        }*/
-
         std::cout << "Links: ";
         for (auto& link : links)
         {
@@ -1566,6 +1446,207 @@ private:
     }
 
 
+
+};
+
+
+
+class RingsDefinition
+{
+public:
+
+    RingsDefinition() = default;
+
+    RingsDefinition(const std::list<Link> &in_links, const std::list<ConcentratorIDAndPortsID> &in_concentratorsIDAndPortsID) :
+            links{in_links}, concentratorsIdAndPortsId{in_concentratorsIDAndPortsID} {}
+
+    void addLinks(const std::list<Link> &in_links)
+    {
+        links = in_links;
+    }
+
+    void addConcentratorsIdAndPortsId(const std::list<ConcentratorIDAndPortsID> &in_concentratorsIDAndPortsID)
+    {
+        concentratorsIdAndPortsId = in_concentratorsIDAndPortsID;
+    }
+
+    std::list<std::list<ReverseLink>> determineRings()
+    {
+        auto link{links.rbegin()};
+        while (link != links.rend())
+        {
+            auto concentratorIDAndPortsID{
+                    std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                 [this, link](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                 {
+                                     auto foundConcentratorIDAndPortsID{
+                                             std::find(concentratorIDAndPortsID.portsID.begin(),
+                                                       concentratorIDAndPortsID.portsID.end(), link->port2)};
+                                     if (foundConcentratorIDAndPortsID != concentratorIDAndPortsID.portsID.end())
+                                     {
+                                         return true;
+                                     }
+                                 }
+                    )};
+
+            std::list<int> endPorts{concentratorIDAndPortsID->portsID};
+
+            std::list<int> endPortsOfDirectBypass;
+            std::list<int> endPortsOfReverseBypass;
+
+            if (endPorts.size() > 1)
+            {
+                endPortsOfDirectBypass = endPorts;
+
+                auto ring{differentLinksPairPorts.begin()};
+                while (ring != differentLinksPairPorts.end() || differentLinksPairPorts.empty())
+                {
+                    while (endPortsOfDirectBypass.size() != 0 || endPortsOfReverseBypass.size() != 0)
+                    {
+                        std::list<int> tmpEndPorts1;
+                        std::list<int> tmpEndPorts2;
+
+                        if (endPortsOfDirectBypass.empty() && endPortsOfReverseBypass.size() > 1)
+                        {
+                            tmpEndPorts1 = endPortsOfReverseBypass;
+                        }
+                        if (endPortsOfReverseBypass.empty() && endPortsOfDirectBypass.size() > 1)
+                        {
+                            tmpEndPorts2 = endPortsOfDirectBypass;
+                        }
+
+                        std::list<ForkForDirectAndReverseBypass> forks;
+                        for (auto &elem1 : tmpEndPorts1)
+                        {
+                            for (auto &elem2 : tmpEndPorts2)
+                            {
+                                ForkForDirectAndReverseBypass newFork;
+
+                                if (!newFork.isIdenticalPorts() && std::find(forks.begin(), forks.end(), newFork) == forks.end())
+                                {
+                                    forks.push_back(newFork);
+                                }
+                            }
+                        }
+
+                        if (forks.size() > 1)
+                        {
+                            if (ring->first.empty())
+                            {
+                                ring->first.push_back({0, forks.front().port1});
+                                ring->second.push_back({0, forks.front().port2});
+                            } else
+                            {
+                                ring->first.back().port2 = forks.front().port1;
+                                ring->second.back().port2 = forks.front().port2;
+                            }
+
+                            auto nextRing{ring}; ++nextRing;
+                            auto fork{forks.begin()}; ++fork;
+                            for (int i{1}; i <= forks.size() - 1; ++i, ++nextRing)
+                            {
+                                differentLinksPairPorts.insert(nextRing, *ring);
+                                nextRing->first.back().port2 = fork->port1;
+                                nextRing->second.back().port2 = fork->port2;
+                            }
+                        }
+                        else
+                        {
+                            ring->first.back().port2 = forks.front().port1;
+                            ring->second.back().port2 = forks.front().port2;
+                        }
+
+                        auto beginPortDirectBypass{std::find_if(links.begin(), links.end(),
+                                                                [ring](Link& link1)
+                                                                {
+                                                                    return link1.port2 == ring->first.back().port2;
+                                                                })};
+                        ring->first.push_back({beginPortDirectBypass->port1, 0});
+
+                        auto beginPortReverseBypass{std::find_if(links.begin(), links.end(),
+                                                                 [ring](Link& link1)
+                                                                 {
+                                                                     return link1.port2 == ring->second.back().port2;
+                                                                 })};
+                        ring->second.push_back({beginPortReverseBypass->port1, 0});
+
+
+
+                        auto iterByBeginPort{std::find_if(links.begin(), links.end(),
+                                                          [](Link ))};
+
+
+
+
+                        auto concentratorIDAndPortsIDOfDirectBypass{
+                                std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                             [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                             {
+                                                 auto foundConcentratorIDAndPortsID{
+                                                         std::find(concentratorIDAndPortsID.portsID.begin(),
+                                                                   concentratorIDAndPortsID.portsID.end(), ring->first.back().port1)};
+                                                 if (foundConcentratorIDAndPortsID != concentratorIDAndPortsID.portsID.end())
+                                                 {
+                                                     return true;
+                                                 }
+                                             }
+                                )};
+                        endPortsOfDirectBypass = concentratorIDAndPortsIDOfDirectBypass->portsID;
+
+                        auto concentratorIDAndPortsIDOfReverseBypass{
+                                std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                             [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                             {
+                                                 auto foundConcentratorIDAndPortsID{
+                                                         std::find(concentratorIDAndPortsID.portsID.begin(),
+                                                                   concentratorIDAndPortsID.portsID.end(), ring->second.back().port1)};
+                                                 if (foundConcentratorIDAndPortsID != concentratorIDAndPortsID.portsID.end())
+                                                 {
+                                                     return true;
+                                                 }
+                                             }
+                                )};
+                        endPortsOfReverseBypass = concentratorIDAndPortsIDOfReverseBypass->portsID;
+
+
+
+
+                        if (endPortsOfDirectBypass.size() ==1 && endPortsOfReverseBypass.size() ==1 &&
+                            concentratorIDAndPortsIDOfDirectBypass->concentratorID == concentratorIDAndPortsIDOfReverseBypass->concentratorID)
+                        {
+                            auto nextRing{ring}; ++nextRing;
+                            differentLinksPairPorts.insert(nextRing, *ring);
+
+                            ++ring;
+                        }
+                    }
+
+                    ++ring;
+
+                    if (ring != differentLinksPairPorts.end())
+                    {
+
+                    }
+                }
+            }
+
+
+
+        }
+
+    }
+
+
+private:
+
+    std::list<Link> links;
+
+    std::list<ConcentratorIDAndPortsID> concentratorsIdAndPortsId;
+
+    std::list<std::list<ReverseLink>> reverseLinks;
+
+    //Контейнер колец
+    std::list<std::pair<std::list<DifferentLinksPairPorts>, std::list<DifferentLinksPairPorts>>> differentLinksPairPorts;
 
 };
 
