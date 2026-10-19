@@ -1853,7 +1853,8 @@ public:
 
             std::cout << "After endPorts.size() > 1"; std::getchar();
             ++link;
-            //differentLinksPairPorts.emplace_back();
+
+            differentLinksPairPorts.emplace_back();
             //outputRings();
             //std::cout << "Press any key!" << '\n'; std::getchar();
         }
