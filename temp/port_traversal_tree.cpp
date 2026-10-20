@@ -50,7 +50,7 @@ struct ForkForDirectAndReverseBypass
     //ID порта №2
     int port2{};
 
-    bool isIdenticalPorts()
+    bool isIdenticalPorts() const
     {
         return port1 == port2;
     }
@@ -74,7 +74,7 @@ struct DifferentLinksPairPorts
     //ID порта №2
     int port2;
 
-    bool operator == (const Link& rhs) const
+    bool operator == (const DifferentLinksPairPorts& rhs) const
     {
         if (this->port1 == rhs.port1 && this->port2 == rhs.port2) return true;//TODO сделать проверку на равенство размеров
 
@@ -1475,7 +1475,7 @@ public:
     {
         auto link{links.rbegin()};
 
-        differentLinksPairPorts.emplace_back();
+        //differentLinksPairPorts.emplace_back();
         auto ring{differentLinksPairPorts.begin()};
         //differentLinksPairPorts.emplace_back();
         while (link != links.rend())
@@ -1537,6 +1537,18 @@ public:
                 //differentLinksPairPorts.emplace_back();
                 //auto ring{differentLinksPairPorts.begin()};
                 endPortsOfDirectBypass = endPorts;
+
+
+                if (link != links.rbegin())
+                {
+                    differentLinksPairPorts.emplace_back();
+                    ring = differentLinksPairPorts.end();
+                    --ring;
+                }
+                else
+                {
+                    differentLinksPairPorts.emplace_back();
+                }
 
                 while (ring != differentLinksPairPorts.end())
                 {
@@ -1670,7 +1682,7 @@ public:
                         //----------
 
                         std::cout << "Before determine begin port and add it in list of rings" << '\n';
-                        outputRings();
+                        //outputRings();
                         //std::cout << "Press any key!" << '\n'; std::getchar();*/
 
                         if (forks.size() >= 1)
@@ -1702,7 +1714,7 @@ public:
                             //этот начальный порт
                             //----------
                             std::cout << "After determine begin port and add it in list of rings" << '\n';
-                            outputRings();
+                            //outputRings();
                             //std::cout << "Press any key!" << '\n'; std::getchar();
 
 
@@ -1866,6 +1878,7 @@ public:
 
                         endPortsOfReverseBypass.clear();
                         endPortsOfReverseBypass.push_back(ring->second.back().port2);
+                        std::cout << "qqq" << '\n';
                     }
                     else
                     {
@@ -1873,28 +1886,34 @@ public:
                         endPortsOfReverseBypass.clear();
                         //differentLinksPairPorts.emplace_back();
                         //--ring;
+                        std::cout << "aaa" << '\n';
                     }
                     std::cout << "Next ring" << '\n';
-                    outputRings();
+                    //outputRings();
 
-                    std::cout << "Press any key!" << '\n'; std::getchar();
+                    std::cout << "Press any key!" << '\n'; //std::getchar();
 
                 }
-                std::cout << "endPorts.size() > 1"; //std::getchar();
+                std::cout << "endPorts.size() > 1" << '\n'; //std::getchar();
             }
 
-            std::cout << "After endPorts.size() > 1"; std::getchar();
+            std::cout << "After endPorts.size() > 1" << '\n'; //std::getchar();
             ++link;
 
-            differentLinksPairPorts.emplace_back();
-            --ring;
+            //differentLinksPairPorts.emplace_back();
+            //--ring;
             //outputRings();
             //std::cout << "Press any key!" << '\n'; std::getchar();
         }
 
-        outputRings();
+        //outputRings();
 
 
+    }
+
+    std::list<std::pair<std::list<DifferentLinksPairPorts>, std::list<DifferentLinksPairPorts>>> getRings()
+    {
+        return differentLinksPairPorts;
     }
 
 
@@ -1909,7 +1928,9 @@ private:
     //Контейнер колец
     std::list<std::pair<std::list<DifferentLinksPairPorts>, std::list<DifferentLinksPairPorts>>> differentLinksPairPorts;
 
-    void outputRings()
+
+
+    /*void outputRings()
     {
         for (auto &elem : differentLinksPairPorts)
         {
@@ -1923,6 +1944,26 @@ private:
             for (auto &second : elem.second)
             {
                 std::cout << second.port1 << '-' << second.port2 << '\n';
+            }
+            std::cout << '\n';
+
+        }
+    }*/
+
+    void outputRings()
+    {
+        for (auto &elem : differentLinksPairPorts)
+        {
+            std::cout << "--- ring ---" << '\n';
+            for (auto &first : elem.first)
+            {
+                std::cout << '{' << first.port1 << ", " << first.port2 << "}, ";
+            }
+            std::cout << '\n';
+
+            for (auto &second : elem.second)
+            {
+                std::cout << '{' << second.port1 << ", " << second.port2 << "}, ";
             }
             std::cout << '\n';
 
@@ -2151,8 +2192,67 @@ int main()
                                            {52, 61}, {103, 191}, {192, 201}, {202, 104}, {101, 82}
                                    }};
 
-    RingsDefinition ringsDefinition(originalLinks3, concentratorsIDAndPortsID2);
+    RingsDefinition ringsDefinition(originalLinks2, concentratorsIDAndPortsID2);
     ringsDefinition.determineRings();
+
+    std::list<std::pair<std::list<DifferentLinksPairPorts>, std::list<DifferentLinksPairPorts>>> rings{
+            {
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 82}, {101, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 82}, {101, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 64}, {71, 72}, {81, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}},
+                     {{0, 141}, {132, 131}, {62, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 142}, {212, 211}, {63, 0}},
+                     {{0, 141}, {132, 131}, {62, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 82}, {101, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 82}, {101, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}}},
+
+                    {{{0, 64}, {71, 72}, {81, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}},
+                     {{0, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
+
+                    {{{0, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}}},
+
+                    {{{0, 82}, {101, 102}, {111, 0}},
+                     {{0, 83}, {91, 92}, {112, 0}}},
+
+                    {{{0, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                     {{0, 102}, {111, 113}, {121, 122}, {23, 0}}},
+
+                    {{{0, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}},
+                     {{0, 41}, {32, 31}, {22, 0}}}
+            }
+    };
+
+    if (ringsDefinition.getRings() == rings) std::cout << "OK!" << '\n';
+    else std::cout << "Not OK!" << '\n';
+
 
     return 0;
 }
