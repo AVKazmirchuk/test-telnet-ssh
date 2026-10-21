@@ -1607,231 +1607,223 @@ public:
                             forks.push_back({endPortsOfDirectBypass.front(), endPortsOfReverseBypass.front()});
                         }
 
+
                         std::cout << "Forks: ";
                         for (auto elem: forks)
                         {
                             std::cout << elem.port1 << ' ' << elem.port2 << ',';
                         }
                         std::cout << '\n';
+                        if (forks.empty())
+                        {
+                            //std::cout << "Press any key!" << '\n'; std::getchar();
+                        }
                         //Получить все возможные варианты обходов развилок из списков конечных портов обходов
                         //----------
 
 
 
-                        if (forks.size() >= 1)
+
+                        //----------
+                        //Добавить в текущее кольцо конечные порты из контейнера развилок
+                        if (ring->first.empty())
+                        {
+
+                            ring->first.push_back({0, forks.front().port1});
+                            ring->second.push_back({0, forks.front().port2});
+                        } else
+                        {
+                            ring->first.back().port2 = forks.front().port1;
+                            ring->second.back().port2 = forks.front().port2;
+                        }
+                        //Добавить в текущее кольцо конечные порты из контейнера развилок
+                        //----------
+                        //outputRings();
+                        if (forks.size() > 1)
                         {
                             //----------
-                            //Добавить в текущее кольцо конечные порты из контейнера развилок
-                            if (ring->first.empty())
+                            //Добавить копии текущего кольца, заменив конечные порты значениями из контейнера развилок
+                            auto nextRing{ring};
+                            ++nextRing;
+                            for (auto fork{++forks.begin()}; fork != forks.end(); ++fork, ++nextRing)
                             {
-
-                                ring->first.push_back({0, forks.front().port1});
-                                ring->second.push_back({0, forks.front().port2});
-                            } else
-                            {
-                                ring->first.back().port2 = forks.front().port1;
-                                ring->second.back().port2 = forks.front().port2;
+                                differentLinksPairPorts.insert(nextRing, *ring);
+                                std::cout << "++Ring" << '\n';
+                                --nextRing;
+                                nextRing->first.back().port2 = fork->port1;
+                                nextRing->second.back().port2 = fork->port2;
                             }
-                            //Добавить в текущее кольцо конечные порты из контейнера развилок
-                            //----------
-                            //outputRings();
-                            if (forks.size() > 1)
-                            {
-                                //----------
-                                //Добавить копии текущего кольца, заменив конечные порты значениями из контейнера развилок
-                                auto nextRing{ring};
-                                ++nextRing;
-                                for (auto fork{++forks.begin()}; fork != forks.end(); ++fork, ++nextRing)
-                                {
-                                    differentLinksPairPorts.insert(nextRing, *ring);
-                                    std::cout << "++Ring" << '\n';
-                                    --nextRing;
-                                    nextRing->first.back().port2 = fork->port1;
-                                    nextRing->second.back().port2 = fork->port2;
-                                }
-                            }
-
-                            //----------
-                            //По конечному порту определить начальный порт в списке линков. Добавить в список колец
-                            //этот начальный порт.
-                            auto beginPortDirectBypass{std::find_if(links.begin(), links.end(),
-                                                                    [ring](Link &link1)
-                                                                    {
-                                                                        return link1.port2 ==
-                                                                               ring->first.back().port2;
-                                                                    })};
-                            if (beginPortDirectBypass != links.end())
-                            {
-                                ring->first.push_back({beginPortDirectBypass->port1, 0});
-                            }
-
-                            auto beginPortReverseBypass{std::find_if(links.begin(), links.end(),
-                                                                     [ring](Link &link1)
-                                                                     {
-                                                                         return link1.port2 ==
-                                                                                ring->second.back().port2;
-                                                                     })};
-                            if (beginPortReverseBypass != links.end())
-                            {
-                                ring->second.push_back({beginPortReverseBypass->port1, 0});
-                            }
-                            //По конечному порту определить начальный порт в списке линков. Добавить в список колец
-                            //этот начальный порт
-                            //----------
-                            std::cout << "After determine begin port and add it in list of rings" << '\n';
-                            //outputRings();
-                            //std::cout << "Press any key!" << '\n'; std::getchar();
-
-
-                            //----------
-                            //По этому начальному порту собрать в контейнеры конечных портов все конечные порты этого же
-                            //концентратора из списка линков, которые находятся только выше.
-                            auto concentratorIDAndPortsIDOfDirectBypass{
-                                    std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
-                                                 [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
-                                                 {
-                                                     auto foundConcentratorIDAndPortsID{
-                                                             std::find(concentratorIDAndPortsID.portsID.begin(),
-                                                                       concentratorIDAndPortsID.portsID.end(),
-                                                                       ring->first.back().port1)};
-                                                     if (foundConcentratorIDAndPortsID !=
-                                                         concentratorIDAndPortsID.portsID.end())
-                                                     {
-                                                         return true;
-                                                     }
-
-                                                     return false;
-                                                 }
-                                    )};
-                            std::list<int> tmpEndPortsOfDirectBypass = concentratorIDAndPortsIDOfDirectBypass->portsID;
-                            std::cout << "tmpEndPortsOfDirectBypass: ";
-                            for (auto elem: tmpEndPortsOfDirectBypass)
-                            {
-                                std::cout << elem << ',';
-                            }
-                            std::cout << '\n';
-
-                            auto linkOfDirectBypass{std::find_if(links.rbegin(), links.rend(),
-                                                                 [ring](Link &link)
-                                                                 {
-                                                                     if (link.port1 == ring->first.back().port1)
-                                                                     {
-                                                                         return true;
-                                                                     }
-
-                                                                     return false;
-                                                                 })};
-                            auto localLinkOfDirectBypass{linkOfDirectBypass};
-                            ++localLinkOfDirectBypass;
-                            endPortsOfDirectBypass.clear();
-                            for (; localLinkOfDirectBypass != links.rend(); ++localLinkOfDirectBypass)
-                            {
-                                if (std::find(tmpEndPortsOfDirectBypass.begin(), tmpEndPortsOfDirectBypass.end(),
-                                              localLinkOfDirectBypass->port2) != tmpEndPortsOfDirectBypass.end())
-                                {
-
-                                    endPortsOfDirectBypass.push_back(localLinkOfDirectBypass->port2);
-                                }
-                            }
-                            std::cout << "endPortsOfDirectBypass: ";
-                            for (auto elem: endPortsOfDirectBypass)
-                            {
-                                std::cout << elem << ',';
-                            }
-                            std::cout << '\n';
-//2
-                            auto concentratorIDAndPortsIDOfReverseBypass{
-                                    std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
-                                                 [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
-                                                 {
-                                                     auto foundConcentratorIDAndPortsID{
-                                                             std::find(concentratorIDAndPortsID.portsID.begin(),
-                                                                       concentratorIDAndPortsID.portsID.end(),
-                                                                       ring->second.back().port1)};
-                                                     if (foundConcentratorIDAndPortsID !=
-                                                         concentratorIDAndPortsID.portsID.end())
-                                                     {
-                                                         return true;
-                                                     }
-
-                                                     return false;
-                                                 }
-                                    )};
-                            std::list<int> tmpEndPortsOfReverseBypass = concentratorIDAndPortsIDOfReverseBypass->portsID;
-                            std::cout << "tmpEndPortsOfReverseBypass: ";
-                            for (auto elem: tmpEndPortsOfReverseBypass)
-                            {
-                                std::cout << elem << ',';
-                            }
-                            std::cout << '\n';
-                            auto linkOfReverseBypass{std::find_if(links.rbegin(), links.rend(),
-                                                                  [ring](Link &link)
-                                                                  {
-                                                                      if (link.port1 == ring->second.back().port1)
-                                                                      {
-                                                                          return true;
-                                                                      }
-
-                                                                      return false;
-                                                                  })};
-                            auto localLinkOfReverseBypass{linkOfReverseBypass};
-                            ++localLinkOfReverseBypass;
-                            endPortsOfReverseBypass.clear();
-                            for (; localLinkOfReverseBypass != links.rend(); ++localLinkOfReverseBypass)
-                            {
-                                if (std::find(tmpEndPortsOfReverseBypass.begin(), tmpEndPortsOfReverseBypass.end(),
-                                              localLinkOfReverseBypass->port2) != tmpEndPortsOfReverseBypass.end())
-                                {
-
-                                    endPortsOfReverseBypass.push_back(localLinkOfReverseBypass->port2);
-                                }
-                            }
-                            std::cout << "endPortsOfReverseBypass: ";
-                            for (auto elem: endPortsOfReverseBypass)
-                            {
-                                std::cout << elem << ',';
-                            }
-                            std::cout << '\n';
-                            //По этому начальному порту собрать в контейнеры конечных портов все конечные порты этого же
-                            //концентратора из списка линков, которые находятся только выше.
-                            //----------
-
-
-                            //----------
-                            //Если обходы одновременно сходятся на один концентратор и контейнеры конечных портов обходов
-                            //не пусты.
-                            if (
-                                    (concentratorIDAndPortsIDOfDirectBypass->concentratorID ==
-                                     concentratorIDAndPortsIDOfReverseBypass->concentratorID) &&
-                                    (!endPortsOfDirectBypass.empty() && !endPortsOfReverseBypass.empty())
-                                    )
-                            {
-                                //Если в контейнерах конечных портов обходов не по одному одинаковому значению,
-                                //то есть, обходы не сошлись в один порт
-                                if (not(endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
-                                        (endPortsOfDirectBypass == endPortsOfReverseBypass)))
-                                {
-                                    //Добавить кольцо (сделать копию)
-                                    auto nextRing{ring};
-                                    ++nextRing;
-                                    differentLinksPairPorts.insert(nextRing, *ring);
-                                    //++ring;
-                                    std::cout << "++Ring" << '\n';
-                                }
-                                //outputRings();
-                                //std::cout << "Press any key!" << '\n'; std::getchar();
-                            }
-
-
-                            //Если обходы одновременно сходятся на один концентратор и контейнеры конечных портов обходов
-                            //не пусты
-                            //----------
-
-                            //outputRings();
-                            //std::cout << "Press any key!" << '\n'; std::getchar();
-                            std::cout << "forks.size() > 1" << "\n";
                         }
 
+                        //----------
+                        //По конечному порту определить начальный порт в списке линков. Добавить в список колец
+                        //этот начальный порт.
+                        auto beginPortDirectBypass{std::find_if(links.begin(), links.end(),
+                                                                [ring](Link &link1)
+                                                                {
+                                                                    return link1.port2 ==
+                                                                           ring->first.back().port2;
+                                                                })};
+                        if (beginPortDirectBypass != links.end())
+                        {
+                            ring->first.push_back({beginPortDirectBypass->port1, 0});
+                        }
+
+                        auto beginPortReverseBypass{std::find_if(links.begin(), links.end(),
+                                                                 [ring](Link &link1)
+                                                                 {
+                                                                     return link1.port2 ==
+                                                                            ring->second.back().port2;
+                                                                 })};
+                        if (beginPortReverseBypass != links.end())
+                        {
+                            ring->second.push_back({beginPortReverseBypass->port1, 0});
+                        }
+                        //По конечному порту определить начальный порт в списке линков. Добавить в список колец
+                        //этот начальный порт
+                        //----------
+                        std::cout << "After determine begin port and add it in list of rings" << '\n';
+                        //outputRings();
+                        //std::cout << "Press any key!" << '\n'; std::getchar();
+
+
+                        //----------
+                        //По этому начальному порту собрать в контейнеры конечных портов все конечные порты этого же
+                        //концентратора из списка линков, которые находятся только выше.
+                        auto concentratorIDAndPortsIDOfDirectBypass{
+                                std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                             [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                             {
+                                                 auto foundConcentratorIDAndPortsID{
+                                                         std::find(concentratorIDAndPortsID.portsID.begin(),
+                                                                   concentratorIDAndPortsID.portsID.end(),
+                                                                   ring->first.back().port1)};
+                                                 if (foundConcentratorIDAndPortsID !=
+                                                     concentratorIDAndPortsID.portsID.end())
+                                                 {
+                                                     return true;
+                                                 }
+
+                                                 return false;
+                                             }
+                                )};
+                        std::list<int> tmpEndPortsOfDirectBypass = concentratorIDAndPortsIDOfDirectBypass->portsID;
+                        std::cout << "tmpEndPortsOfDirectBypass: ";
+                        for (auto elem: tmpEndPortsOfDirectBypass)
+                        {
+                            std::cout << elem << ',';
+                        }
+                        std::cout << '\n';
+
+                        auto linkOfDirectBypass{std::find_if(links.rbegin(), links.rend(),
+                                                             [ring](Link &link)
+                                                             {
+                                                                 if (link.port1 == ring->first.back().port1)
+                                                                 {
+                                                                     return true;
+                                                                 }
+
+                                                                 return false;
+                                                             })};
+                        auto localLinkOfDirectBypass{linkOfDirectBypass};
+                        ++localLinkOfDirectBypass;
+                        endPortsOfDirectBypass.clear();
+                        for (; localLinkOfDirectBypass != links.rend(); ++localLinkOfDirectBypass)
+                        {
+                            if (std::find(tmpEndPortsOfDirectBypass.begin(), tmpEndPortsOfDirectBypass.end(),
+                                          localLinkOfDirectBypass->port2) != tmpEndPortsOfDirectBypass.end())
+                            {
+
+                                endPortsOfDirectBypass.push_back(localLinkOfDirectBypass->port2);
+                            }
+                        }
+                        std::cout << "endPortsOfDirectBypass: ";
+                        for (auto elem: endPortsOfDirectBypass)
+                        {
+                            std::cout << elem << ',';
+                        }
+                        std::cout << '\n';
+//2
+                        auto concentratorIDAndPortsIDOfReverseBypass{
+                                std::find_if(concentratorsIdAndPortsId.begin(), concentratorsIdAndPortsId.end(),
+                                             [this, ring](ConcentratorIDAndPortsID &concentratorIDAndPortsID)
+                                             {
+                                                 auto foundConcentratorIDAndPortsID{
+                                                         std::find(concentratorIDAndPortsID.portsID.begin(),
+                                                                   concentratorIDAndPortsID.portsID.end(),
+                                                                   ring->second.back().port1)};
+                                                 if (foundConcentratorIDAndPortsID !=
+                                                     concentratorIDAndPortsID.portsID.end())
+                                                 {
+                                                     return true;
+                                                 }
+
+                                                 return false;
+                                             }
+                                )};
+                        std::list<int> tmpEndPortsOfReverseBypass = concentratorIDAndPortsIDOfReverseBypass->portsID;
+                        std::cout << "tmpEndPortsOfReverseBypass: ";
+                        for (auto elem: tmpEndPortsOfReverseBypass)
+                        {
+                            std::cout << elem << ',';
+                        }
+                        std::cout << '\n';
+                        auto linkOfReverseBypass{std::find_if(links.rbegin(), links.rend(),
+                                                              [ring](Link &link)
+                                                              {
+                                                                  if (link.port1 == ring->second.back().port1)
+                                                                  {
+                                                                      return true;
+                                                                  }
+
+                                                                  return false;
+                                                              })};
+                        auto localLinkOfReverseBypass{linkOfReverseBypass};
+                        ++localLinkOfReverseBypass;
+                        endPortsOfReverseBypass.clear();
+                        for (; localLinkOfReverseBypass != links.rend(); ++localLinkOfReverseBypass)
+                        {
+                            if (std::find(tmpEndPortsOfReverseBypass.begin(), tmpEndPortsOfReverseBypass.end(),
+                                          localLinkOfReverseBypass->port2) != tmpEndPortsOfReverseBypass.end())
+                            {
+
+                                endPortsOfReverseBypass.push_back(localLinkOfReverseBypass->port2);
+                            }
+                        }
+                        std::cout << "endPortsOfReverseBypass: ";
+                        for (auto elem: endPortsOfReverseBypass)
+                        {
+                            std::cout << elem << ',';
+                        }
+                        std::cout << '\n';
+                        //По этому начальному порту собрать в контейнеры конечных портов все конечные порты этого же
+                        //концентратора из списка линков, которые находятся только выше.
+                        //----------
+
+
+                        //----------
+                        //Если обходы одновременно сходятся на один концентратор и контейнеры конечных портов обходов
+                        //содержат более одного порта.
+                        if ((concentratorIDAndPortsIDOfDirectBypass->concentratorID ==
+                             concentratorIDAndPortsIDOfReverseBypass->concentratorID) &&
+                            (endPortsOfDirectBypass.size() > 1 && endPortsOfReverseBypass.size() > 1))
+                        {
+                            //Добавить кольцо (сделать копию)
+                            auto nextRing{ring};
+                            ++nextRing;
+                            differentLinksPairPorts.insert(nextRing, *ring);
+                            //++ring;
+                            std::cout << "++Ring" << '\n';
+
+                            //outputRings();
+                            //std::cout << "Press any key!" << '\n'; std::getchar();
+                        }
+
+                        //outputRings();
+                        //std::cout << "Press any key!" << '\n'; std::getchar();
+                        std::cout << "forks.size() > 1" << "\n";
+                        //Если в контейнерах конечных портов обходов по одному одинаковому значению,
+                        //то есть, обходы сошлись в один порт
                         if (endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
                             (endPortsOfDirectBypass == endPortsOfReverseBypass))
                         {
@@ -1848,29 +1840,26 @@ public:
                         //std::cout << "Press any key!" << '\n'; std::getchar();*/
 
 
-                        //}
+
 
                     }
 
                     ++ring;
-
+                    //outputRings();
                     if (ring != differentLinksPairPorts.end())
                     {
                         endPortsOfDirectBypass.clear();
-                        endPortsOfDirectBypass.push_back(ring->first.back().port2);
-
                         endPortsOfReverseBypass.clear();
-                        endPortsOfReverseBypass.push_back(ring->second.back().port2);
+
+                        if (ring->first.back().port2 !=0 || ring->second.back().port2 != 0)
+                        {
+                            endPortsOfDirectBypass.push_back(ring->first.back().port2);
+                            endPortsOfReverseBypass.push_back(ring->second.back().port2);
+                        }
+
                         std::cout << "qqq" << '\n';
                     }
-                    else
-                    {
-                        //endPortsOfDirectBypass.clear();
-                        //endPortsOfReverseBypass.clear();
-                        //differentLinksPairPorts.emplace_back();
-                        //--ring;
-                        std::cout << "aaa" << '\n';
-                    }
+
                     std::cout << "Next ring" << '\n';
                     //outputRings();
 
