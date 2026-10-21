@@ -1572,13 +1572,13 @@ public:
                         }
 
                         std::cout << "endPortsOfDirectBypass: ";
-                        for (auto elem : endPortsOfDirectBypass)
+                        for (auto elem: endPortsOfDirectBypass)
                         {
                             std::cout << elem << ' ';
                         }
                         std::cout << '\n';
                         std::cout << "endPortsOfReverseBypass: ";
-                        for (auto elem : endPortsOfReverseBypass)
+                        for (auto elem: endPortsOfReverseBypass)
                         {
                             std::cout << elem << ' ';
                         }
@@ -1587,13 +1587,14 @@ public:
                         std::list<ForkForDirectAndReverseBypass> forks;
 
 
-                        for (auto &elem1 : tmpEndPorts1)
+                        for (auto &elem1: tmpEndPorts1)
                         {
-                            for (auto &elem2 : tmpEndPorts2)
+                            for (auto &elem2: tmpEndPorts2)
                             {
                                 ForkForDirectAndReverseBypass newFork{elem1, elem2};
 
-                                if (!newFork.isIdenticalPorts() && std::find(forks.begin(), forks.end(), newFork) == forks.end())
+                                if (!newFork.isIdenticalPorts() &&
+                                    std::find(forks.begin(), forks.end(), newFork) == forks.end())
                                 {
                                     std::cout << "IF3" << '\n';
                                     forks.push_back(newFork);
@@ -1607,7 +1608,7 @@ public:
                         }
 
                         std::cout << "Forks: ";
-                        for (auto elem : forks)
+                        for (auto elem: forks)
                         {
                             std::cout << elem.port1 << ' ' << elem.port2 << ',';
                         }
@@ -1616,7 +1617,8 @@ public:
                         //----------
 
 
-                        if (forks.size() > 1)
+
+                        if (forks.size() >= 1)
                         {
                             //----------
                             //Добавить в текущее кольцо конечные порты из контейнера развилок
@@ -1633,67 +1635,30 @@ public:
                             //Добавить в текущее кольцо конечные порты из контейнера развилок
                             //----------
                             //outputRings();
-
-                            //----------
-                            //Добавить копии текущего кольца, заменив конечные порты значениями из контейнера развилок
-                            auto nextRing{ring}; ++nextRing;
-                            for (auto fork{++forks.begin()}; fork != forks.end(); ++fork, ++nextRing)
+                            if (forks.size() > 1)
                             {
-                                differentLinksPairPorts.insert(nextRing, *ring);std::cout << "++Ring" << '\n';
-                                --nextRing;
-                                nextRing->first.back().port2 = fork->port1;
-                                nextRing->second.back().port2 = fork->port2;
+                                //----------
+                                //Добавить копии текущего кольца, заменив конечные порты значениями из контейнера развилок
+                                auto nextRing{ring};
+                                ++nextRing;
+                                for (auto fork{++forks.begin()}; fork != forks.end(); ++fork, ++nextRing)
+                                {
+                                    differentLinksPairPorts.insert(nextRing, *ring);
+                                    std::cout << "++Ring" << '\n';
+                                    --nextRing;
+                                    nextRing->first.back().port2 = fork->port1;
+                                    nextRing->second.back().port2 = fork->port2;
+                                }
                             }
-                            //Добавить копии текущего кольца, заменив конечные порты значениями из контейнера развилок
-                            //----------
-                            //outputRings();
-                            //std::cout << "Press any key!" << '\n'; std::getchar();
-                            std::cout << "forks.size() > 1" << "\n";
-                        }
-                        else if (forks.size() == 1)
-                        {
-                            if (ring->first.empty())
-                            {
-                                ring->first.push_back({0, forks.front().port1});
-                                ring->second.push_back({0, forks.front().port2});
-                            }
-                            else
-                            {
-                                ring->first.back().port2 = forks.front().port1;
-                                ring->second.back().port2 = forks.front().port2;
-                            }
-                            std::cout << "forks.size() == 1" << '\n';
-                        }
 
-                        //----------
-                        //Если в контейнерах конечных портов обходов по одному одинаковому значению, то есть, обходы
-                        //сошлись в один порт
-                        if (endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
-                            (endPortsOfDirectBypass == endPortsOfReverseBypass))
-                        {
-                            endPortsOfDirectBypass.clear();
-                            endPortsOfReverseBypass.clear();
-                            forks.clear();
-                            //++ring;
-                            std::cout << "endPortsOfDirectBypass == endPortsOfReverseBypass" << '\n';
-                        }
-                        //Если в контейнерах конечных портов обходов по одному одинаковому значению, то есть, обходы
-                        //сошлись в один порт
-                        //----------
-
-                        std::cout << "Before determine begin port and add it in list of rings" << '\n';
-                        //outputRings();
-                        //std::cout << "Press any key!" << '\n'; std::getchar();*/
-
-                        if (forks.size() >= 1)
-                        {
                             //----------
                             //По конечному порту определить начальный порт в списке линков. Добавить в список колец
                             //этот начальный порт.
                             auto beginPortDirectBypass{std::find_if(links.begin(), links.end(),
                                                                     [ring](Link &link1)
                                                                     {
-                                                                        return link1.port2 == ring->first.back().port2;
+                                                                        return link1.port2 ==
+                                                                               ring->first.back().port2;
                                                                     })};
                             if (beginPortDirectBypass != links.end())
                             {
@@ -1841,32 +1806,50 @@ public:
                                     (!endPortsOfDirectBypass.empty() && !endPortsOfReverseBypass.empty())
                                     )
                             {
-                                //Если в контейнерах конечных портов обходов по одному одинаковому значению, то есть, обходы
-                                //сошлись в один порт
-                                if (endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
-                                    (endPortsOfDirectBypass == endPortsOfReverseBypass))
+                                //Если в контейнерах конечных портов обходов не по одному одинаковому значению,
+                                //то есть, обходы не сошлись в один порт
+                                if (not(endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
+                                        (endPortsOfDirectBypass == endPortsOfReverseBypass)))
                                 {
-                                    endPortsOfDirectBypass.clear();
-                                    endPortsOfReverseBypass.clear();
-                                    forks.clear();
-                                } else
                                     //Добавить кольцо (сделать копию)
-                                {
                                     auto nextRing{ring};
                                     ++nextRing;
                                     differentLinksPairPorts.insert(nextRing, *ring);
                                     //++ring;
                                     std::cout << "++Ring" << '\n';
                                 }
-
-
                                 //outputRings();
                                 //std::cout << "Press any key!" << '\n'; std::getchar();
                             }
+
+
                             //Если обходы одновременно сходятся на один концентратор и контейнеры конечных портов обходов
                             //не пусты
                             //----------
+
+                            //outputRings();
+                            //std::cout << "Press any key!" << '\n'; std::getchar();
+                            std::cout << "forks.size() > 1" << "\n";
                         }
+
+                        if (endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.size() == 1 &&
+                            (endPortsOfDirectBypass == endPortsOfReverseBypass))
+                        {
+                            endPortsOfDirectBypass.clear();
+                            endPortsOfReverseBypass.clear();
+                            //    forks.clear();
+                            //++ring;
+                            std::cout << "endPortsOfDirectBypass == endPortsOfReverseBypass" << '\n';
+                        }
+
+
+                        std::cout << "Before determine begin port and add it in list of rings" << '\n';
+                        //outputRings();
+                        //std::cout << "Press any key!" << '\n'; std::getchar();*/
+
+
+                        //}
+
                     }
 
                     ++ring;
@@ -1882,8 +1865,8 @@ public:
                     }
                     else
                     {
-                        endPortsOfDirectBypass.clear();
-                        endPortsOfReverseBypass.clear();
+                        //endPortsOfDirectBypass.clear();
+                        //endPortsOfReverseBypass.clear();
                         //differentLinksPairPorts.emplace_back();
                         //--ring;
                         std::cout << "aaa" << '\n';
