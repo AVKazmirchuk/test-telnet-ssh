@@ -736,6 +736,7 @@ struct Topology
     Link reverseLink{};
     //Признак завершения поиска линков в этом узле и во всех подузлах дерева
     bool final{};
+
     std::list<std::list<int>> concentratorsByBranches;
 
     //Контейнер узлов дерева поиска линков (рекурсивный)
@@ -1475,9 +1476,8 @@ public:
     {
         auto link{links.rbegin()};
 
-        //differentLinksPairPorts.emplace_back();
         auto ring{differentLinksPairPorts.begin()};
-        //differentLinksPairPorts.emplace_back();
+
         while (link != links.rend())
         {
             //----------
@@ -1509,7 +1509,7 @@ public:
             }
             std::cout << '\n';
 
-            auto localLink{link}; localLink;
+            auto localLink{link};
             for (; localLink != links.rend(); ++localLink)
             {
                 if (std::find(tmpEndPorts.begin(), tmpEndPorts.end(), localLink->port2) != tmpEndPorts.end())
@@ -1533,11 +1533,7 @@ public:
             {
                 std::cout << "endPorts.size() > 1" << '\n';
 
-
-                //differentLinksPairPorts.emplace_back();
-                //auto ring{differentLinksPairPorts.begin()};
                 endPortsOfDirectBypass = endPorts;
-
 
                 if (link != links.rbegin())
                 {
@@ -1559,11 +1555,11 @@ public:
                         std::list<int> tmpEndPorts1{endPortsOfDirectBypass};
                         std::list<int> tmpEndPorts2{endPortsOfReverseBypass};
 
-
                         if (endPortsOfDirectBypass.empty() && endPortsOfReverseBypass.size() > 1)
                         {
                             std::cout << "IF1" << '\n';
                             tmpEndPorts1 = endPortsOfReverseBypass;
+
                         }
                         if (endPortsOfReverseBypass.empty() && endPortsOfDirectBypass.size() > 1)
                         {
@@ -1586,7 +1582,6 @@ public:
 
                         std::list<ForkForDirectAndReverseBypass> forks;
 
-
                         for (auto &elem1: tmpEndPorts1)
                         {
                             for (auto &elem2: tmpEndPorts2)
@@ -1601,12 +1596,12 @@ public:
                                 }
                             }
                         }
+
                         if (endPortsOfDirectBypass.size() == 1 && endPortsOfReverseBypass.empty() ||
                             endPortsOfReverseBypass.size() == 1 && endPortsOfDirectBypass.empty())
                         {
                             forks.push_back({endPortsOfDirectBypass.front(), endPortsOfReverseBypass.front()});
                         }
-
 
                         std::cout << "Forks: ";
                         for (auto elem: forks)
@@ -1842,6 +1837,12 @@ public:
 
 
 
+                    }
+
+                    while (ring->first.back() == ring->second.back())
+                    {
+                        ring->first.pop_back();
+                        ring->second.pop_back();
                     }
 
                     ++ring;
@@ -2208,7 +2209,7 @@ int main()
                     {{{0, 64}, {71, 72}, {81, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}},
                      {{0, 61}, {52, 51}, {42, 41}, {32, 31}, {22, 0}}},
 
-                    {{{0, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
+                    /*{{{0, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}, {121, 122}, {23, 0}},
                      {{0, 83}, {91, 92}, {112, 113}, {121, 122}, {23, 0}}},
 
                     {{{0, 82}, {101, 102}, {111, 0}},
@@ -2218,7 +2219,19 @@ int main()
                      {{0, 102}, {111, 113}, {121, 122}, {23, 0}}},
 
                     {{{0, 43}, {162, 161}, {172, 171}, {33, 31}, {22, 0}},
-                     {{0, 41}, {32, 31}, {22, 0}}}
+                     {{0, 41}, {32, 31}, {22, 0}}}*/
+
+                    {{{0, 82}, {101, 104}, {202, 201}, {192, 191}, {103, 102}, {111, 113}},
+                     {{0, 83}, {91, 92}, {112, 113}}},
+
+                    {{{0, 82}, {101, 102}, {111, 0}},
+                     {{0, 83}, {91, 92}, {112, 0}}},
+
+                    {{{0, 104}, {202, 201}, {192, 191}, {103, 102}},
+                     {{0, 102}}},
+
+                    {{{0, 43}, {162, 161}, {172, 171}, {33, 31}},
+                     {{0, 41}, {32, 31}}}
             }
     };
 
