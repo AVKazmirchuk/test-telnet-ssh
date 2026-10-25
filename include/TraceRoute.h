@@ -45,8 +45,8 @@ typedef struct
 //ICMP type field
 const BYTE ICMP_ECHO_REPLY = 0; //Echo response
 const BYTE ICMP_ECHO_REQUEST = 8; //Request echo
-const BYTE ICMP_TIMEOUT = 11; //Transmission timeout
-const DWORD DEF_ICMP_TIMEOUT = 3000; //default timeout time, unit ms
+const BYTE ICMP_TIMEOUT = 11; //Transmission timeout 11
+const DWORD DEF_ICMP_TIMEOUT = 3000; //default timeout time, unit ms 3000
 const int DEF_ICMP_DATA_SIZE = 32; //default ICMP data part length
 const int MAX_ICMP_PACKET_SIZE = 1024; //The size of the largest ICMP datagram
 const int DEF_MAX_HOP = 30; //Maximum number of hops

@@ -1,3 +1,5 @@
+//Выводит только Host Name, DNS Servers
+#if 0
 //
 // Link with IPHlpAPI.lib
 //
@@ -12,7 +14,8 @@
 
 /* Note: could also use malloc() and free() */
 
-int __cdecl main()
+//int __cdecl main()
+int main()
 {
 
     FIXED_INFO *pFixedInfo;
@@ -98,34 +101,11 @@ int __cdecl main()
 
     return 0;
 }
+#endif
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Выводит непонятное
 #if 0
 #include <winsock2.h>
 #include <iphlpapi.h>
@@ -334,33 +314,7 @@ int __cdecl main(int argc, char **argv)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Выводит IP Address, IP Mask, Gateway, DHCP Server
 #if 0
 #include <winsock2.h>
 #include <iphlpapi.h>
@@ -522,32 +476,7 @@ int __cdecl main()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Сканер портов
 #if 0
 #include <iostream>
 #include <cstdlib>
@@ -642,31 +571,7 @@ int main(int argc, char* argv[]) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Работа по SNMP
 #if 0
 /*_############################################################################
   _##
@@ -856,42 +761,7 @@ int main(int argc, char **argv)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Tracert, не определяет маршрут
 #if 0
 //TraceRoute.cpp
 /*----------------------------------------------------------
@@ -1179,42 +1049,11 @@ BOOL DecodeIcmpResponse(char* pBuf, int iPacketSize, DECODE_RESULT& stDecodeResu
 #ifdef WIN32
 #define strcasecmp _stricmp
 #endif
-
-
-
 #endif
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Определяет адрес по имени
 #if 0
 #include "DNSResolver.h"
 #include "ConfigManager.h"
@@ -1241,44 +1080,27 @@ int main(int argc, char* argv[])
 
     return 0;
 }
-#ifdef SNMP_PP_NAMESPACE
-using namespace Snmp_pp;
-#endif
+//#ifdef SNMP_PP_NAMESPACE
+//using namespace Snmp_pp;
+//#endif
 
 // default request oids
-#define NUM_SYS_VBS	6
-#define sysDescr	"1.3.6.1.2.1.1.1.0"
-#define sysObjectID	"1.3.6.1.2.1.1.2.0"
-#define sysUpTime	"1.3.6.1.2.1.1.3.0"
-#define sysContact	"1.3.6.1.2.1.1.4.0"
-#define sysName		"1.3.6.1.2.1.1.5.0"
-#define sysLocation	"1.3.6.1.2.1.1.6.0"
+//#define NUM_SYS_VBS	6
+//#define sysDescr	"1.3.6.1.2.1.1.1.0"
+//#define sysObjectID	"1.3.6.1.2.1.1.2.0"
+//#define sysUpTime	"1.3.6.1.2.1.1.3.0"
+//#define sysContact	"1.3.6.1.2.1.1.4.0"
+//#define sysName		"1.3.6.1.2.1.1.5.0"
+//#define sysLocation	"1.3.6.1.2.1.1.6.0"
 //#define sysServices	"1.3.6.1.2.1.1.7.0" // not all agents support this...
 
 // default notification oid
-#define coldStart	"1.3.6.1.6.3.1.1.4.3.0.1"
+//#define coldStart	"1.3.6.1.6.3.1.1.4.3.0.1"
+#endif
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Определяет адрес по имени и наоборот
 #if 0
 #define _WIN32_WINNT 0x0600  // Ensure Windows 7+ API availability
 
@@ -1322,7 +1144,6 @@ private:
 // This class provides methods to resolve domain names to IP addresses and perform reverse DNS lookups
 // It uses the Winsock API to fetch network information
 class DNSResolver
-int main(int argc, char **argv)
 {
 public:
 
@@ -1349,22 +1170,12 @@ public:
             std::cerr << "Error: Could not resolve " << domain << ". " << gai_strerror(status) << "\n";
             return;
         }
-    int status;
-    char *req_str      = (char*) "get";
-    //  char *dflt_req_oid = (char*) sysDescr;
-    char *dflt_trp_oid = (char*) coldStart;
-    char *genAddrStr   = (char*) "127.0.0.1" ;		  // localhost
-    char *oid_str      = (char*) NULL;
 
         // Automatically frees addrinfo to prevent memory leaks and ensure exception safety
         std::unique_ptr<struct addrinfo, decltype(&freeaddrinfo)> res_ptr(res, freeaddrinfo);
-    if (argc > 1) genAddrStr = argv[1];
-    if (argc > 2) req_str    = argv[2];
-    if (argc > 3) oid_str    = argv[3];
 
         // Buffer to store the resolved IP address
         char ipStr[NI_MAXHOST];
-    Snmp::socket_startup();  // Initialize socket subsystem
 
         std::cout << "Addresses:\n";
 
@@ -1384,10 +1195,6 @@ public:
                 std::cerr << "Warning: Failed to convert address. Skipping...\n";
             }
         }
-    IpAddress ipAddr(genAddrStr);
-    if (!ipAddr.valid()) {
-        std::cout << "Invalid destination: " << genAddrStr << std::endl;
-        return(1);
     }
 
     /**
@@ -1438,11 +1245,6 @@ public:
         {
             resolveDNS(domain, family);
         }
-    // bind to any port and use IPv6 if needed
-    Snmp snmp(status, 0, (ipAddr.get_ip_version() == Address::version_ipv6));
-    if (status){
-        std::cout << "Failed to create SNMP Session: " << status << std::endl;
-        return(1);
     }
 };
 
@@ -1451,7 +1253,6 @@ public:
 class UserInputHandler
 {
 public:
-    std::cout << "Created session successfully" << std::endl;
 
     /**
      * Prompts the user to enter a numerical choice.
@@ -1486,10 +1287,6 @@ public:
                 std::cerr << e.what() << "\n";
             }
         }
-    CTarget target(ipAddr);
-    if (! target.valid()) {
-        std::cout << "Invalid target" << std::endl;
-        return(1);
     }
 
     /**
@@ -1520,23 +1317,12 @@ public:
                 {
                     throw std::invalid_argument("Invalid input. Enter 1, 2, or 3.");
                 }
-    Pdu pdu;
-    Vb vb;
-    if ( strcmp(req_str, "get") == 0 ) {
 
                 // Clear any extra input and return the corresponding address family
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 if (family == 1) return AF_INET;
                 if (family == 2) return AF_INET6;
                 return AF_UNSPEC;
-        Vb vbl[NUM_SYS_VBS];
-        vbl[0].set_oid(sysDescr);
-        vbl[1].set_oid(sysObjectID);
-        vbl[2].set_oid(sysUpTime);
-        vbl[3].set_oid(sysContact);
-        vbl[4].set_oid(sysName);
-        vbl[5].set_oid(sysLocation);
-//    vbl[6].set_oid(sysServices);
 
             }
                 // Handle invalid input by resetting the input stream and displaying an error message
@@ -1545,14 +1331,6 @@ public:
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 std::cerr << e.what() << "\n";
-        std::cout << "Send a GET-REQUEST to: " << ipAddr.get_printable() << std::endl;
-        if ( ! oid_str ) {
-            if ( strcmp(genAddrStr,"localhost" ) == 0 ||
-                 strcmp(genAddrStr, "127.0.0.1") == 0 ){
-                pdu.set_vblist(vbl, NUM_SYS_VBS);
-            } else {
-                for (int i=0; i<NUM_SYS_VBS;i++)
-                    pdu += vbl[i];
             }
         }
     }
@@ -1609,36 +1387,6 @@ int main()
             {
                 std::cout << "Enter domain " << (i + 1) << ": ";
                 std::getline(std::cin, domains[i]);
-        else {
-            Oid req_oid(oid_str);
-            if ( ! req_oid.valid() ) {
-                std::cout << "Request oid constructor failed for:" << oid_str << std::endl;
-                return(1);
-            }
-            vb.set_oid(req_oid);
-            pdu += vb;
-        }
-        status = snmp.get(pdu, target);
-        if (status){
-            std::cout << "Failed to issue SNMP Get: (" << status  << ") "
-                      << snmp.error_msg(status) << std::endl;
-            return(1);
-        }
-        else{
-            std::cout << "Issued get successfully" << std::endl;
-            int vbcount = pdu.get_vb_count();
-            if ( vbcount == NUM_SYS_VBS ) {
-                pdu.get_vblist(vbl, vbcount);
-                for ( int i=0; i<vbcount ; i++ )  {
-                    std::cout << vbl[i].get_printable_oid() << " : " <<
-                              vbl[i].get_printable_value() << std::endl;
-                }
-            } else {
-                for ( int i=0; i<vbcount ; i++ )  {
-                    pdu.get_vb(vb, i);
-                    std::cout << vb.get_printable_oid() << " : " <<
-                              vb.get_printable_value() << std::endl;
-                }
             }
 
             // Get address family preference
@@ -1655,8 +1403,6 @@ int main()
         // Handle any exceptions thrown during execution
         std::cerr << "Error: " << e.what() << "\n";
     }
-    else if ( strcmp(req_str, "trap") == 0 ) {
-        std::cout << "Send a TRAP to: " << ipAddr.get_printable() << std::endl;
 
     return 0;
 }
@@ -1664,39 +1410,7 @@ int main()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Пингует адреса и имена
 #if 0
 //#include "stdafx.h"
 
@@ -1757,11 +1471,11 @@ int main(int argc, char **argv)
 
 
     // Check arguments
-    /*if (argc != 2)
+    if (argc != 2)
     {
         fprintf(stderr,"\nSyntax: ping.exe [HostName]Or[IPAddress]\n");
         return 1;
-    }*/
+    }
 
 
 
@@ -1818,7 +1532,7 @@ int main(int argc, char **argv)
     // or an address
     printf("3. Getting WinSock version 1.1 ...ok\n");
 
-    iaDest.s_addr = inet_addr("169.254.0.1");
+    iaDest.s_addr = inet_addr("192.168.0.1");
     dwAddress=inet_addr(argv[1]);
     printf("4. Getting ip address...\n");
 
@@ -1883,12 +1597,6 @@ int main(int argc, char **argv)
         ipInfo.Options = NULL;
         //icmpEcho.ipInfo.Ttl = 256;
         // Reqest an ICMP echo
-        if ( ! oid_str )
-            oid_str = dflt_trp_oid;
-
-        char buf[32] = "qazwsxedcrfvtgbyhnujmik,ol.p;/[";
-
-
         dwRet = pIcmpSendEcho(
                 hndlFile, // Handle from IcmpCreateFile()
                 dwAddress, // Destination IP address
@@ -1905,16 +1613,11 @@ int main(int argc, char **argv)
                inet_ntoa(iaDest),
                icmpEcho.RTTime,
                icmpEcho.ipInfo.Ttl);
-        std::cout << ", dataSize=" << icmpEcho.DataSize;
         if (icmpEcho.Status)
         {
             printf("\nError: icmpEcho.Status=%ld\n",icmpEcho.Status);
             //  return ;
             break;
-        Oid notify_oid(oid_str);
-        if ( ! notify_oid.valid() ) {
-            std::cout << "Notify oid constructor failed for:" << oid_str << std::endl;
-            return(1);
         }
     }
     printf("9./////////////////PING//////////////// \n");
@@ -1924,43 +1627,12 @@ int main(int argc, char **argv)
     FreeLibrary(hndlIcmp);
     WSACleanup();
     getch();
-
-    return 0;
 }
 #endif
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//SSH. Проверить работу и проверить код по ссылке (https://libssh2.org/examples/ssh2_exec.html)
 #if 0
 /* Copyright (C) The libssh2 project and its contributors.
  *
@@ -1998,7 +1670,7 @@ int main(int argc, char **argv)
 
 
 
-static const char *hostname = "10.178.18.4"; //10.178.18.4
+static const char *hostname = "192.168.0.1"; //10.178.18.4
 static const char *commandline = "sh run";
 static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
 static const char *privkey = "/home/username/.ssh/id_rsa";
@@ -2053,7 +1725,7 @@ int main(int argc, char *argv[])
     LIBSSH2_SESSION *session = NULL;
     LIBSSH2_CHANNEL *channel;
     int exitcode;
-    char *exitsignal = (char *)"none";
+    char *exitsignal = (char *) "none";
     ssize_t bytecount = 0;
     size_t len;
     LIBSSH2_KNOWNHOSTS *nh;
@@ -2063,58 +1735,67 @@ int main(int argc, char *argv[])
     WSADATA wsadata;
 
     rc = WSAStartup(MAKEWORD(2, 0), &wsadata);
-    if(rc) {
+    if (rc)
+    {
         fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
         return 1;
     }
 #endif
 
-    if(argc > 1) {
+    if (argc > 1)
+    {
         hostname = argv[1];  /* must be ip address only */
     }
-    if(argc > 2) {
+    if (argc > 2)
+    {
         username = argv[2];
     }
-    if(argc > 3) {
+    if (argc > 3)
+    {
         password = argv[3];
     }
-    if(argc > 4) {
+    if (argc > 4)
+    {
         commandline = argv[4];
     }
 
     rc = libssh2_init(0);
-    if(rc) {
+    if (rc)
+    {
         fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
         return 1;
     }
 
     hostaddr = inet_addr(hostname);
-        pdu.set_notify_id(notify_oid);
+    //pdu.set_notify_id(notify_oid);
 
     /* Ultra basic "connect to port 22 on localhost".  Your code is
      * responsible for creating the socket establishing the connection
      */
     sock = socket(AF_INET, SOCK_STREAM, 0);
-    if(sock == LIBSSH2_INVALID_SOCKET) {
+    if (sock == LIBSSH2_INVALID_SOCKET)
+    {
         fprintf(stderr, "failed to create socket.\n");
         goto shutdown;
     }
-        // Use a simple payload
-        vb.set_oid(sysLocation);
-        vb.set_value("This is a test");
-        pdu += vb;
+    // Use a simple payload
+    //vb.set_oid(sysLocation);
+    //vb.set_value("This is a test");
+    //pdu += vb;
 
     sin.sin_family = AF_INET;
     sin.sin_port = htons(22);
     sin.sin_addr.s_addr = hostaddr;
-    if(connect(sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in))) {
+    if (connect(sock, (struct sockaddr *) (&sin), sizeof(struct sockaddr_in)))
+    {
         fprintf(stderr, "failed to connect.\n");
         goto shutdown;
     }
 
     /* Create a session instance */
     session = libssh2_session_init();
-    if(!session) {
+    if (!session)
+    {
         fprintf(stderr, "Could not initialize SSH session.\n");
         goto shutdown;
     }
@@ -2125,15 +1806,17 @@ int main(int argc, char *argv[])
     /* ... start it up. This will trade welcome banners, exchange keys,
      * and setup crypto, compression, and MAC layers
      */
-    while((rc = libssh2_session_handshake(session, sock)) ==
-          LIBSSH2_ERROR_EAGAIN);
-    if(rc) {
+    while ((rc = libssh2_session_handshake(session, sock)) ==
+           LIBSSH2_ERROR_EAGAIN);
+    if (rc)
+    {
         fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
         goto shutdown;
     }
 
     nh = libssh2_knownhost_init(session);
-    if(!nh) {
+    if (!nh)
+    {
         /* eeek, do cleanup here */
         return 2;
     }
@@ -2147,11 +1830,12 @@ int main(int argc, char *argv[])
                                 LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 
     fingerprint = libssh2_session_hostkey(session, &len, &type);
-    if(fingerprint) {
+    if (fingerprint)
+    {
         struct libssh2_knownhost *host;
         int check = libssh2_knownhost_checkp(nh, hostname, 22,
                                              fingerprint, len,
-                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN|
+                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN |
                                              LIBSSH2_KNOWNHOST_KEYENC_RAW,
                                              &host);
 
@@ -2163,198 +1847,166 @@ int main(int argc, char *argv[])
          * At this point, we could verify that 'check' tells us the key is
          * fine or bail out.
          *****/
-    }
-    else {
+    } else
+    {
         /* eeek, do cleanup here */
         return 3;
     }
     libssh2_knownhost_free(nh);
-        status = snmp.trap(pdu, target);
+    //status = snmp.trap(pdu, target);
 
-    if(strlen(password) != 0) {
+    if (strlen(password) != 0)
+    {
         /* We could authenticate via password */
-        while((rc = libssh2_userauth_password(session, username, password)) ==
-              LIBSSH2_ERROR_EAGAIN);
-        if(rc) {
+        while ((rc = libssh2_userauth_password(session, username, password)) ==
+               LIBSSH2_ERROR_EAGAIN);
+        if (rc)
+        {
             fprintf(stderr, "Authentication by password failed.\n");
             goto shutdown;
-        if (status){
-            std::cout << "Failed to issue SNMP Trap: (" << status  << ") "
-                      << snmp.error_msg(status) << std::endl;
-            return(1);
-        } else {
-            std::cout << "Success" << std::endl;
-        }
+            //if (status)
+            //{
+            //    std::cout << "Failed to issue SNMP Trap: (" << status << ") "
+            //              << snmp.error_msg(status) << std::endl;
+            //    return (1);
+            //} else
+            //{
+            //    std::cout << "Success" << std::endl;
+            //}
 
-    }
-    else {
-        /* Or by public key */
-        while((rc = libssh2_userauth_publickey_fromfile(session, username,
-                                                        pubkey, privkey,
-                                                        password)) ==
-              LIBSSH2_ERROR_EAGAIN);
-        if(rc) {
-            fprintf(stderr, "Authentication by public key failed.\n");
-            goto shutdown;
+        } else
+        {
+            /* Or by public key */
+            while ((rc = libssh2_userauth_publickey_fromfile(session, username,
+                                                             pubkey, privkey,
+                                                             password)) ==
+                   LIBSSH2_ERROR_EAGAIN);
+            if (rc)
+            {
+                fprintf(stderr, "Authentication by public key failed.\n");
+                goto shutdown;
+            }
         }
-    }
 
 #if 0
-    libssh2_trace(session, ~0);
+        libssh2_trace(session, ~0);
 #endif
 
-    /* Exec non-blocking on the remote host */
-    do {
-        channel = libssh2_channel_open_session(session);
-        if(channel ||
-           libssh2_session_last_error(session, NULL, NULL, 0) !=
-           LIBSSH2_ERROR_EAGAIN)
-            break;
-        waitsocket(sock, session);
-    } while(1);
-    if(!channel) {
-        fprintf(stderr, "Error\n");
-        exit(1);
-    }
-    while((rc = libssh2_channel_exec(channel, commandline)) ==
-          LIBSSH2_ERROR_EAGAIN) {
-        waitsocket(sock, session);
-    }
-    if(rc) {
-        fprintf(stderr, "exec error\n");
-        exit(1);
-    }
-    for(;;) {
-        ssize_t nread;
-        /* loop until we block */
-        do {
-            char buffer[0x4000];
-            nread = libssh2_channel_read(channel, buffer, sizeof(buffer));
-            if(nread > 0) {
-                ssize_t i;
-                bytecount += nread;
-                fprintf(stderr, "We read:\n");
-                for(i = 0; i < nread; ++i)
-                    fputc(buffer[i], stderr);
-                fprintf(stderr, "\n");
-            }
-            else {
-                if(nread != LIBSSH2_ERROR_EAGAIN)
-                    /* no need to output this for the EAGAIN case */
-                    fprintf(stderr, "libssh2_channel_read returned %ld\n",
-                            (long)nread);
-            }
-        } while(nread > 0);
-
-        /* this is due to blocking that would occur otherwise so we loop on
-           this condition */
-        if(nread == LIBSSH2_ERROR_EAGAIN) {
+        /* Exec non-blocking on the remote host */
+        do
+        {
+            channel = libssh2_channel_open_session(session);
+            if (channel ||
+                libssh2_session_last_error(session, NULL, NULL, 0) !=
+                LIBSSH2_ERROR_EAGAIN)
+                break;
+            waitsocket(sock, session);
+        } while (1);
+        if (!channel)
+        {
+            fprintf(stderr, "Error\n");
+            exit(1);
+        }
+        while ((rc = libssh2_channel_exec(channel, commandline)) ==
+               LIBSSH2_ERROR_EAGAIN)
+        {
             waitsocket(sock, session);
         }
+        if (rc)
+        {
+            fprintf(stderr, "exec error\n");
+            exit(1);
+        }
+        for (;;)
+        {
+            ssize_t nread;
+            /* loop until we block */
+            do
+            {
+                char buffer[0x4000];
+                nread = libssh2_channel_read(channel, buffer, sizeof(buffer));
+                if (nread > 0)
+                {
+                    ssize_t i;
+                    bytecount += nread;
+                    fprintf(stderr, "We read:\n");
+                    for (i = 0; i < nread; ++i)
+                        fputc(buffer[i], stderr);
+                    fprintf(stderr, "\n");
+                } else
+                {
+                    if (nread != LIBSSH2_ERROR_EAGAIN)
+                        /* no need to output this for the EAGAIN case */
+                        fprintf(stderr, "libssh2_channel_read returned %ld\n",
+                                (long) nread);
+                }
+            } while (nread > 0);
+
+            /* this is due to blocking that would occur otherwise so we loop on
+               this condition */
+            if (nread == LIBSSH2_ERROR_EAGAIN)
+            {
+                waitsocket(sock, session);
+            } else
+                break;
+            //std::cout << "Invalid SNMP operation: " << req_str << std::endl;
+            //std::cout << "Usage: " << argv[0] << " hostname [get | trap]" << std::endl;
+            //return (1);
+        }
+        exitcode = 127;
+        while ((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
+            waitsocket(sock, session);
+
+        if (rc == 0)
+        {
+            exitcode = libssh2_channel_get_exit_status(channel);
+            libssh2_channel_get_exit_signal(channel, &exitsignal,
+                                            NULL, NULL, NULL, NULL, NULL);
+        }
+
+        if (exitsignal)
+            fprintf(stderr, "\nGot signal: %s\n", exitsignal);
         else
-            break;
-        std::cout << "Invalid SNMP operation: " << req_str  << std::endl ;
-        std::cout << "Usage: " << argv[0] << " hostname [get | trap]" << std::endl;
-        return(1);
-    }
-    exitcode = 127;
-    while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
-        waitsocket(sock, session);
+            fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",
+                    exitcode, (long) bytecount);
 
-    if(rc == 0) {
-        exitcode = libssh2_channel_get_exit_status(channel);
-        libssh2_channel_get_exit_signal(channel, &exitsignal,
-                                        NULL, NULL, NULL, NULL, NULL);
-    }
+        libssh2_channel_free(channel);
+        channel = NULL;
 
-    if(exitsignal)
-        fprintf(stderr, "\nGot signal: %s\n", exitsignal);
-    else
-        fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",
-                exitcode, (long)bytecount);
+        shutdown:
+        //Snmp::socket_cleanup();  // Shut down socket subsystem
 
-    libssh2_channel_free(channel);
-    channel = NULL;
+        if (session)
+        {
+            libssh2_session_disconnect(session, "Normal Shutdown");
+            libssh2_session_free(session);
+        }
 
-    shutdown:
-    Snmp::socket_cleanup();  // Shut down socket subsystem
+        if (sock != LIBSSH2_INVALID_SOCKET)
+        {
+            shutdown(sock, 2);
+            LIBSSH2_SOCKET_CLOSE(sock);
+        }
 
-    if(session) {
-        libssh2_session_disconnect(session, "Normal Shutdown");
-        libssh2_session_free(session);
-    }
+        fprintf(stderr, "all done\n");
 
-    if(sock != LIBSSH2_INVALID_SOCKET) {
-        shutdown(sock, 2);
-        LIBSSH2_SOCKET_CLOSE(sock);
-    }
-
-    fprintf(stderr, "all done\n");
-
-    libssh2_exit();
+        libssh2_exit();
 
 #ifdef _WIN32
-    WSACleanup();
+        WSACleanup();
 #endif
 
-    return 0;
-    return(0);
+        return 0;
+        return (0);
+    }
 }
 #endif
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*#include <stdio.h>
+//Telnet. Проверить работу
+#if 0
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <winsock2.h>
@@ -2436,7 +2088,7 @@ int decode_message(SOCKET mainSocket, char messageBuffer[BUFFERSIZE], char retur
 
 int main(int argc, char* argv[]) {
     // Arguments
-    char IpAddress[15] = "192.168.4.13";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
+    char IpAddress[15] = "52.1.193.111";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
     unsigned short portNumber = 23;    // port number
     int recvTimeout = 500;  // how long client wait for server response
     int echoVerification = 1;   // echo verification on client side
@@ -2603,5 +2255,247 @@ int main(int argc, char* argv[]) {
     printf("END \n");
     return 0;
 }//*/
+#endif
+
+
+
+
+/* Copyright (C) The libssh2 project and its contributors.  *  * Sample showing how to use libssh2 to execute a command remotely.  *  * The sample code has fixed values for host name, user name, password  * and command to run.  *  * $ ./ssh2_exec 127.0.0.1 user password "uptime"  *  * SPDX-License-Identifier: BSD-3-Clause  */
+
+//#include "libssh2_setup.h"
+#include <libssh2.h>
+
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static const char *hostname = "127.0.0.1";
+static const char *commandline = "uptime";
+static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
+static const char *privkey = "/home/username/.ssh/id_rsa";
+static const char *username = "user";
+static const char *password = "password";
+
+static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
+{
+    struct timeval timeout;
+    int rc;
+    fd_set fd;
+    fd_set *writefd = NULL;
+    fd_set *readfd = NULL;
+    int dir;
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+    FD_ZERO(&fd);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#endif  FD_SET(socket_fd, &fd);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+    /* now make sure we wait in the correct direction */
+    dir = libssh2_session_block_directions(session);
+    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)  readfd = &fd;
+    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)  writefd = &fd;
+    rc = select((int)(socket_fd + 1), readfd, writefd, NULL, &timeout);
+    return rc;
+}
+int main(int argc, char *argv[])
+{
+    uint32_t hostaddr;
+    libssh2_socket_t sock;
+    struct sockaddr_in sin;
+    const char *fingerprint;
+    int rc;
+    LIBSSH2_SESSION *session = NULL;
+    LIBSSH2_CHANNEL *channel;
+    int exitcode;
+    char *exitsignal = NULL;
+    ssize_t bytecount = 0;
+    size_t len;
+    LIBSSH2_KNOWNHOSTS *nh;
+    int type;
+#ifdef _WIN32
+WSADATA wsadata;
+    rc = WSAStartup(MAKEWORD(2, 0), &wsadata);
+    if (rc)
+    {
+        fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
+        return 1;
+    }
 
 #endif
+
+    if (argc > 1)
+    {
+        hostname = argv[1]; /* must be ip address only */
+    }
+    if (argc > 2)
+    {
+        username = argv[2];
+    }
+    if (argc > 3)
+    {
+        password = argv[3];
+    }
+    if (argc > 4)
+    {
+        commandline = argv[4];
+    }
+    rc = libssh2_init(0);
+    if (rc)
+    {
+        fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
+        return 1;
+    }
+    hostaddr = inet_addr(hostname);
+/* Ultra basic "connect to port 22 on localhost". Your code is  * responsible for creating the socket establishing the connection  */
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == LIBSSH2_INVALID_SOCKET)
+    {
+        fprintf(stderr, "failed to create socket.\n");
+        goto
+                shutdown;
+    }
+    sin.
+            sin_family = AF_INET;
+    sin.
+            sin_port = htons(22);
+    sin.sin_addr.s_addr = hostaddr;
+    if (
+            connect(sock,
+                    (struct sockaddr *) (&sin), sizeof(struct sockaddr_in)))
+    {
+        fprintf(stderr, "failed to connect.\n");
+        goto
+                shutdown;
+    }
+
+/* Create a session instance */
+    session = libssh2_session_init();
+    if (!session)
+    {
+        fprintf(stderr, "Could not initialize SSH session.\n");
+        goto
+                shutdown;
+    }
+
+/* tell libssh2 we want it all done non-blocking */
+    libssh2_session_set_blocking(session,
+                                 0);
+/* ... start it up. This will trade welcome banners, exchange keys,  * and setup crypto, compression, and MAC layers  */
+    while ((
+                   rc = libssh2_session_handshake(session, sock)
+           ) == LIBSSH2_ERROR_EAGAIN);
+    if (rc)
+    {
+        fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
+        goto
+                shutdown;
+    }
+    nh = libssh2_knownhost_init(session);
+    if (!nh)
+    {  /* eeek, do cleanup here */
+        return 2;
+    }
+
+/* read all hosts from here */
+    libssh2_knownhost_readfile(nh,
+                               "known_hosts", LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+/* store all known hosts to here */
+    libssh2_knownhost_writefile(nh,
+                                "dumpfile", LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+    fingerprint = libssh2_session_hostkey(session, &len, &type);
+    if (fingerprint)
+    {
+        struct libssh2_knownhost *host;
+        int check = libssh2_knownhost_checkp(nh, hostname, 22, fingerprint, len,
+                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW, &host);
+        fprintf(stderr, "Host check: %d, key: %s\n", check,
+                (check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH) ? host->key : "<none>");
+
+/*****
+ * At this point, we could verify that 'check' tells us the key is
+ * fine or bail out.
+ *****/
+    } else
+    {
+/* eeek, do cleanup here */
+        return 3;
+    }
+    libssh2_knownhost_free(nh);
+    if (
+            strlen(password)
+            != 0)
+    {
+/* We could authenticate via password */
+        while ((
+                       rc = libssh2_userauth_password(session, username, password)
+               ) == LIBSSH2_ERROR_EAGAIN);
+        if (rc)
+        {
+            fprintf(stderr, "Authentication by password failed.\n");
+            goto
+                    shutdown;
+        }
+    } else
+    {
+/* Or by public key */
+        while ((
+                       rc = libssh2_userauth_publickey_fromfile(session, username, pubkey, privkey, password)
+               ) == LIBSSH2_ERROR_EAGAIN);
+        if (rc)
+        {
+            fprintf(stderr, "Authentication by public key failed.\n");
+            goto
+                    shutdown;
+        }
+    }
+
+#if 0
+libssh2_trace(session, ~0);
+#endif
+
+    /* Exec non-blocking on the remote host */
+    do {  channel = libssh2_channel_open_session(session);  if(channel ||  libssh2_session_last_error(session, NULL, NULL, 0) !=  LIBSSH2_ERROR_EAGAIN)  break;  waitsocket(sock, session);  } while(1);
+    if(!channel) {  fprintf(stderr, "Error\n");
+        return 1;
+    }
+    while((rc = libssh2_channel_exec(channel, commandline)) ==  LIBSSH2_ERROR_EAGAIN) {  waitsocket(sock, session);  }  if(rc) {  fprintf(stderr, "exec error\n");
+        return 1;
+    }
+    for(;;) {  ssize_t nread;  /* loop until we block */
+        do {
+            char buffer[0x4000];  nread = libssh2_channel_read(channel, buffer, sizeof(buffer));  if(nread > 0) {  ssize_t i;  bytecount += nread;  fprintf(stderr, "We read:\n");
+                for(i = 0; i < nread; ++i)  fputc(buffer[i], stderr);  fprintf(stderr, "\n");
+            }
+            else {
+                if(nread != LIBSSH2_ERROR_EAGAIN)  /* no need to output this for the EAGAIN case */   fprintf(stderr, "libssh2_channel_read returned %ld\n",
+                            (long)nread);  }  } while(nread > 0);    /* this is due to blocking that would occur otherwise so we loop on
+           this condition */
+        if(nread == LIBSSH2_ERROR_EAGAIN) {  waitsocket(sock, session);  }  else
+            break;  }  exitcode = 127;  while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)  waitsocket(sock, session);    if(rc == 0) {  exitcode = libssh2_channel_get_exit_status(channel);  libssh2_channel_get_exit_signal(channel, &exitsignal,  NULL, NULL, NULL, NULL, NULL);  }    if(exitsignal)  fprintf(stderr, "\nGot signal: %s\n",  exitsignal ? exitsignal : "none");
+    else  fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",  exitcode, (long)bytecount);    libssh2_channel_free(channel);  channel = NULL;   shutdown:
+
+    if(session) {  libssh2_session_disconnect(session, "Normal Shutdown");  libssh2_session_free(session);  }    if(sock != LIBSSH2_INVALID_SOCKET) {  shutdown(sock, 2);  LIBSSH2_SOCKET_CLOSE(sock);  }    fprintf(stderr, "all done\n");    libssh2_exit();
+#ifdef _WIN32  
+WSACleanup();
+#endif
+
+    return 0;
+    }
