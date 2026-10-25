@@ -741,6 +741,8 @@ struct Topology
 
     //Контейнер узлов дерева поиска линков (рекурсивный)
     std::list<Topology> topologies{};
+
+
 };
 
 struct TestTopology
