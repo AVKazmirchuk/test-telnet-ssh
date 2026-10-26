@@ -1632,378 +1632,6 @@ int main(int argc, char **argv)
 
 
 
-//SSH. Проверить работу и проверить код по ссылке (https://libssh2.org/examples/ssh2_exec.html)
-#if 0
-/* Copyright (C) The libssh2 project and its contributors.
- *
- * Sample showing how to use libssh2 to execute a command remotely.
- *
- * The sample code has fixed values for host name, user name, password
- * and command to run.
- *
- * $ ./ssh2_exec 127.0.0.1 user password "uptime"
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
-//#include <os400/libssh2_config.h>
-#include <libssh2.h>
-
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <iostream>
-//#include <winsock2.h>
-
-
-
-static const char *hostname = "192.168.0.1"; //10.178.18.4
-static const char *commandline = "sh run";
-static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
-static const char *privkey = "/home/username/.ssh/id_rsa";
-static const char *username = "admin";
-static const char *password = "cdtn0a0h";
-
-static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
-{
-    struct timeval timeout;
-    int rc;
-    fd_set fd;
-    fd_set *writefd = NULL;
-    fd_set *readfd = NULL;
-    int dir;
-
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
-
-    FD_ZERO(&fd);
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-#endif
-    FD_SET(socket_fd, &fd);
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
-    /* now make sure we wait in the correct direction */
-    dir = libssh2_session_block_directions(session);
-
-    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
-        readfd = &fd;
-
-    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
-        writefd = &fd;
-
-    rc = select((int)(socket_fd + 1), readfd, writefd, NULL, &timeout);
-
-    return rc;
-}
-
-int main(int argc, char *argv[])
-{
-
-    uint32_t hostaddr;
-    libssh2_socket_t sock;
-    struct sockaddr_in sin;
-    const char *fingerprint;
-    int rc;
-    LIBSSH2_SESSION *session = NULL;
-    LIBSSH2_CHANNEL *channel;
-    int exitcode;
-    char *exitsignal = (char *) "none";
-    ssize_t bytecount = 0;
-    size_t len;
-    LIBSSH2_KNOWNHOSTS *nh;
-    int type;
-
-#ifdef _WIN32
-    WSADATA wsadata;
-
-    rc = WSAStartup(MAKEWORD(2, 0), &wsadata);
-    if (rc)
-    {
-        fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
-        return 1;
-    }
-#endif
-
-    if (argc > 1)
-    {
-        hostname = argv[1];  /* must be ip address only */
-    }
-    if (argc > 2)
-    {
-        username = argv[2];
-    }
-    if (argc > 3)
-    {
-        password = argv[3];
-    }
-    if (argc > 4)
-    {
-        commandline = argv[4];
-    }
-
-    rc = libssh2_init(0);
-    if (rc)
-    {
-        fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
-        return 1;
-    }
-
-    hostaddr = inet_addr(hostname);
-    //pdu.set_notify_id(notify_oid);
-
-    /* Ultra basic "connect to port 22 on localhost".  Your code is
-     * responsible for creating the socket establishing the connection
-     */
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == LIBSSH2_INVALID_SOCKET)
-    {
-        fprintf(stderr, "failed to create socket.\n");
-        goto shutdown;
-    }
-    // Use a simple payload
-    //vb.set_oid(sysLocation);
-    //vb.set_value("This is a test");
-    //pdu += vb;
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(22);
-    sin.sin_addr.s_addr = hostaddr;
-    if (connect(sock, (struct sockaddr *) (&sin), sizeof(struct sockaddr_in)))
-    {
-        fprintf(stderr, "failed to connect.\n");
-        goto shutdown;
-    }
-
-    /* Create a session instance */
-    session = libssh2_session_init();
-    if (!session)
-    {
-        fprintf(stderr, "Could not initialize SSH session.\n");
-        goto shutdown;
-    }
-
-    /* tell libssh2 we want it all done non-blocking */
-    libssh2_session_set_blocking(session, 0);
-
-    /* ... start it up. This will trade welcome banners, exchange keys,
-     * and setup crypto, compression, and MAC layers
-     */
-    while ((rc = libssh2_session_handshake(session, sock)) ==
-           LIBSSH2_ERROR_EAGAIN);
-    if (rc)
-    {
-        fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
-        goto shutdown;
-    }
-
-    nh = libssh2_knownhost_init(session);
-    if (!nh)
-    {
-        /* eeek, do cleanup here */
-        return 2;
-    }
-
-    /* read all hosts from here */
-    libssh2_knownhost_readfile(nh, "known_hosts",
-                               LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-
-    /* store all known hosts to here */
-    libssh2_knownhost_writefile(nh, "dumpfile",
-                                LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-
-    fingerprint = libssh2_session_hostkey(session, &len, &type);
-    if (fingerprint)
-    {
-        struct libssh2_knownhost *host;
-        int check = libssh2_knownhost_checkp(nh, hostname, 22,
-                                             fingerprint, len,
-                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN |
-                                             LIBSSH2_KNOWNHOST_KEYENC_RAW,
-                                             &host);
-
-        fprintf(stderr, "Host check: %d, key: %s\n", check,
-                (check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH) ?
-                host->key : "<none>");
-
-        /*****
-         * At this point, we could verify that 'check' tells us the key is
-         * fine or bail out.
-         *****/
-    } else
-    {
-        /* eeek, do cleanup here */
-        return 3;
-    }
-    libssh2_knownhost_free(nh);
-    //status = snmp.trap(pdu, target);
-
-    if (strlen(password) != 0)
-    {
-        /* We could authenticate via password */
-        while ((rc = libssh2_userauth_password(session, username, password)) ==
-               LIBSSH2_ERROR_EAGAIN);
-        if (rc)
-        {
-            fprintf(stderr, "Authentication by password failed.\n");
-            goto shutdown;
-            //if (status)
-            //{
-            //    std::cout << "Failed to issue SNMP Trap: (" << status << ") "
-            //              << snmp.error_msg(status) << std::endl;
-            //    return (1);
-            //} else
-            //{
-            //    std::cout << "Success" << std::endl;
-            //}
-
-        } else
-        {
-            /* Or by public key */
-            while ((rc = libssh2_userauth_publickey_fromfile(session, username,
-                                                             pubkey, privkey,
-                                                             password)) ==
-                   LIBSSH2_ERROR_EAGAIN);
-            if (rc)
-            {
-                fprintf(stderr, "Authentication by public key failed.\n");
-                goto shutdown;
-            }
-        }
-
-#if 0
-        libssh2_trace(session, ~0);
-#endif
-
-        /* Exec non-blocking on the remote host */
-        do
-        {
-            channel = libssh2_channel_open_session(session);
-            if (channel ||
-                libssh2_session_last_error(session, NULL, NULL, 0) !=
-                LIBSSH2_ERROR_EAGAIN)
-                break;
-            waitsocket(sock, session);
-        } while (1);
-        if (!channel)
-        {
-            fprintf(stderr, "Error\n");
-            exit(1);
-        }
-        while ((rc = libssh2_channel_exec(channel, commandline)) ==
-               LIBSSH2_ERROR_EAGAIN)
-        {
-            waitsocket(sock, session);
-        }
-        if (rc)
-        {
-            fprintf(stderr, "exec error\n");
-            exit(1);
-        }
-        for (;;)
-        {
-            ssize_t nread;
-            /* loop until we block */
-            do
-            {
-                char buffer[0x4000];
-                nread = libssh2_channel_read(channel, buffer, sizeof(buffer));
-                if (nread > 0)
-                {
-                    ssize_t i;
-                    bytecount += nread;
-                    fprintf(stderr, "We read:\n");
-                    for (i = 0; i < nread; ++i)
-                        fputc(buffer[i], stderr);
-                    fprintf(stderr, "\n");
-                } else
-                {
-                    if (nread != LIBSSH2_ERROR_EAGAIN)
-                        /* no need to output this for the EAGAIN case */
-                        fprintf(stderr, "libssh2_channel_read returned %ld\n",
-                                (long) nread);
-                }
-            } while (nread > 0);
-
-            /* this is due to blocking that would occur otherwise so we loop on
-               this condition */
-            if (nread == LIBSSH2_ERROR_EAGAIN)
-            {
-                waitsocket(sock, session);
-            } else
-                break;
-            //std::cout << "Invalid SNMP operation: " << req_str << std::endl;
-            //std::cout << "Usage: " << argv[0] << " hostname [get | trap]" << std::endl;
-            //return (1);
-        }
-        exitcode = 127;
-        while ((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
-            waitsocket(sock, session);
-
-        if (rc == 0)
-        {
-            exitcode = libssh2_channel_get_exit_status(channel);
-            libssh2_channel_get_exit_signal(channel, &exitsignal,
-                                            NULL, NULL, NULL, NULL, NULL);
-        }
-
-        if (exitsignal)
-            fprintf(stderr, "\nGot signal: %s\n", exitsignal);
-        else
-            fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",
-                    exitcode, (long) bytecount);
-
-        libssh2_channel_free(channel);
-        channel = NULL;
-
-        shutdown:
-        //Snmp::socket_cleanup();  // Shut down socket subsystem
-
-        if (session)
-        {
-            libssh2_session_disconnect(session, "Normal Shutdown");
-            libssh2_session_free(session);
-        }
-
-        if (sock != LIBSSH2_INVALID_SOCKET)
-        {
-            shutdown(sock, 2);
-            LIBSSH2_SOCKET_CLOSE(sock);
-        }
-
-        fprintf(stderr, "all done\n");
-
-        libssh2_exit();
-
-#ifdef _WIN32
-        WSACleanup();
-#endif
-
-        return 0;
-        return (0);
-    }
-}
-#endif
-
-
-
 //Telnet. Проверить работу
 #if 0
 #include <stdio.h>
@@ -2088,7 +1716,7 @@ int decode_message(SOCKET mainSocket, char messageBuffer[BUFFERSIZE], char retur
 
 int main(int argc, char* argv[]) {
     // Arguments
-    char IpAddress[15] = "52.1.193.111";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
+    char IpAddress[15] = "10.178.18.33";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
     unsigned short portNumber = 23;    // port number
     int recvTimeout = 500;  // how long client wait for server response
     int echoVerification = 1;   // echo verification on client side
@@ -2259,7 +1887,8 @@ int main(int argc, char* argv[]) {
 
 
 
-
+//SSH
+#if 0
 /* Copyright (C) The libssh2 project and its contributors.
  *
  * Sample showing how to use libssh2 to execute a command remotely.
@@ -2296,12 +1925,12 @@ int main(int argc, char* argv[]) {
 #include <sys/time.h>  /* for timeval */
 #endif
 
-static const char *hostname = "127.0.0.1";
-static const char *commandline = "uptime";
+static const char *hostname = "10.11.5.2";
+static const char *commandline = "show version";
 static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
 static const char *privkey = "/home/username/.ssh/id_rsa";
-static const char *username = "user";
-static const char *password = "password";
+static const char *username = "akazmirchuk";
+static const char *password = "cdtn0a0h";
 
 static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 {
@@ -2578,3 +2207,188 @@ int main(int argc, char *argv[])
 
     return exitcode;
 }
+#endif
+
+
+
+//Telnet
+#if 1
+/* telnet.cpp
+	A simple demonstration telnet client with Boost asio
+
+	Parameters:
+		hostname or address
+		port - typically 23 for telnet service
+
+	To end the application, send Ctrl-C on standard input
+*/
+
+#include <deque>
+#include <iostream>
+#include <boost/bind.hpp>
+#include <boost/asio.hpp>
+#include <boost/thread.hpp>
+
+#ifdef POSIX
+#include <termios.h>
+#endif
+
+using boost::asio::ip::tcp;
+using namespace std;
+
+class telnet_client
+{
+public:
+    enum { max_read_length = 512 };
+
+    telnet_client(boost::asio::io_context& io_service, tcp::resolver::iterator endpoint_iterator)
+            : io_service_(io_service), socket_(io_service)
+    {
+        connect_start(endpoint_iterator);
+    }
+
+    void write(const char msg) // pass the write data to the do_write function via the io service in the other thread
+    {
+        io_service_.post(boost::bind(&telnet_client::do_write, this, msg));
+    }
+
+    void close() // call the do_close function via the io service in the other thread
+    {
+        io_service_.post(boost::bind(&telnet_client::do_close, this));
+    }
+
+private:
+
+    void connect_start(tcp::resolver::iterator endpoint_iterator)
+    { // asynchronously connect a socket to the specified remote endpoint and call connect_complete when it completes or fails
+        tcp::endpoint endpoint = *endpoint_iterator;
+        socket_.async_connect(endpoint,
+                              boost::bind(&telnet_client::connect_complete,
+                                          this,
+                                          boost::asio::placeholders::error,
+                                          ++endpoint_iterator));
+    }
+
+    void connect_complete(const boost::system::error_code& error, tcp::resolver::iterator endpoint_iterator)
+    { // the connection to the server has now completed or failed and returned an error
+        if (!error) // success, so start waiting for read data
+            read_start();
+        else if (endpoint_iterator != tcp::resolver::iterator())
+        { // failed, so wait for another connection event
+            socket_.close();
+            connect_start(endpoint_iterator);
+        }
+    }
+
+    void read_start(void)
+    { // Start an asynchronous read and call read_complete when it completes or fails
+        socket_.async_read_some(boost::asio::buffer(read_msg_, max_read_length),
+                                boost::bind(&telnet_client::read_complete,
+                                            this,
+                                            boost::asio::placeholders::error,
+                                            boost::asio::placeholders::bytes_transferred));
+    }
+
+    void read_complete(const boost::system::error_code& error, size_t bytes_transferred)
+    { // the asynchronous read operation has now completed or failed and returned an error
+        if (!error)
+        { // read completed, so process the data
+            cout.write(read_msg_, bytes_transferred); // echo to standard output
+            //cout << "\n";
+            read_start(); // start waiting for another asynchronous read again
+        }
+        else
+            do_close();
+    }
+
+    void do_write(const char msg)
+    { // callback to handle write call from outside this class
+        bool write_in_progress = !write_msgs_.empty(); // is there anything currently being written?
+        write_msgs_.push_back(msg); // store in write buffer
+        if (!write_in_progress) // if nothing is currently being written, then start
+            write_start();
+    }
+
+    void write_start(void)
+    { // Start an asynchronous write and call write_complete when it completes or fails
+        boost::asio::async_write(socket_,
+                                 boost::asio::buffer(&write_msgs_.front(), 1),
+                                 boost::bind(&telnet_client::write_complete,
+                                             this,
+                                             boost::asio::placeholders::error));
+    }
+
+    void write_complete(const boost::system::error_code& error)
+    { // the asynchronous read operation has now completed or failed and returned an error
+        if (!error)
+        { // write completed, so send next write data
+            write_msgs_.pop_front(); // remove the completed data
+            if (!write_msgs_.empty()) // if there is anthing left to be written
+                write_start(); // then start sending the next item in the buffer
+        }
+        else
+            do_close();
+    }
+
+    void do_close()
+    {
+        socket_.close();
+    }
+
+private:
+    boost::asio::io_context& io_service_; // the main IO service that runs this connection
+    tcp::socket socket_; // the socket this instance is connected to
+    char read_msg_[max_read_length]; // data read from the socket
+    deque<char> write_msgs_; // buffered write data
+};
+
+int main(int argc, char* argv[])
+{
+// on Unix POXIS based systems, turn off line buffering of input, so cin.get() returns after every keypress
+// On other systems, you'll need to look for an equivalent
+#ifdef POSIX
+    termios stored_settings;
+	tcgetattr(0, &stored_settings);
+	termios new_settings = stored_settings;
+	new_settings.c_lflag &= (~ICANON);
+	new_settings.c_lflag &= (~ISIG); // don't automatically handle control-C
+	tcsetattr(0, TCSANOW, &new_settings);
+#endif
+    try
+    {
+        if (argc != 3)
+        {
+            cerr << "Usage: telnet <host> <port>\n";
+            return 1;
+        }
+        boost::asio::io_service io_service;
+        // resolve the host name and port number to an iterator that can be used to connect to the server
+        tcp::resolver resolver(io_service);
+        tcp::resolver::query query(argv[1], argv[2]);
+        tcp::resolver::iterator iterator = resolver.resolve(query);
+        // define an instance of the main class of this program
+        telnet_client c(io_service, iterator);
+        // run the IO service as a separate thread, so the main thread can block on standard input
+        boost::thread t(boost::bind(&boost::asio::io_service::run, &io_service));
+        while (1)
+        {
+            char ch;
+            cin.get(ch); // blocking wait for standard input
+            if (ch == 3) // ctrl-C to end program
+                break;
+            c.write(ch);
+        }
+        c.close(); // close the telnet client connection
+        t.join(); // wait for the IO service thread to close
+    }
+    catch (exception& e)
+    {
+        cerr << "Exception: " << e.what() << "\n";
+    }
+#ifdef POSIX // restore default buffering of standard input
+    tcsetattr(0, TCSANOW, &stored_settings);
+#endif
+    return 0;
+}
+
+#endif
