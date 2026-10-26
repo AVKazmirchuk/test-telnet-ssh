@@ -2241,7 +2241,7 @@ class telnet_client
 public:
     enum { max_read_length = 512 };
 
-    telnet_client(boost::asio::io_context& io_service, tcp::resolver::iterator endpoint_iterator)
+    telnet_client(boost::asio::io_service& io_service, tcp::resolver::results_type::iterator endpoint_iterator)
             : io_service_(io_service), socket_(io_service)
     {
         connect_start(endpoint_iterator);
@@ -2336,7 +2336,7 @@ private:
     }
 
 private:
-    boost::asio::io_context& io_service_; // the main IO service that runs this connection
+    boost::asio::io_service& io_service_; // the main IO service that runs this connection
     tcp::socket socket_; // the socket this instance is connected to
     char read_msg_[max_read_length]; // data read from the socket
     deque<char> write_msgs_; // buffered write data
