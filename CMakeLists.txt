@@ -36,11 +36,16 @@ if (NOT TARGET libssh2)
     add_subdirectory(./libraries/libssh2-libssh2-1.11.1)
 endif()
 
-find_package(snmp++ CONFIG REQUIRED)
+#find_package(snmp++ CONFIG REQUIRED)
 #if (NOT TARGET snmp_pp)
 #    add_subdirectory(./libraries/snmp++-3.6.3)
 #endif()
 
+find_package(telnetpp REQUIRED)
+
+#if (NOT TARGET telnetpp)
+#    add_subdirectory(./libraries/telnetpp-4.0.0)
+#endif()
 
 
 add_subdirectory(src)
@@ -49,8 +54,8 @@ add_subdirectory(src)
 target_link_libraries(${Application_Name} PRIVATE ws2_32)
 target_link_libraries(${Application_Name} PRIVATE iphlpapi)
 target_link_libraries(${Application_Name} PRIVATE libssh2::libssh2)
-target_link_libraries(${Application_Name} PRIVATE snmp++::snmp++)
-#target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
+#target_link_libraries(${Application_Name} PRIVATE snmp++::snmp++)
+target_link_libraries(${Application_Name} PRIVATE KazDragon::telnetpp)
 
 
 

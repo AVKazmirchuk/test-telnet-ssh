@@ -1,0 +1,4 @@
+ToolSet: w64 11.0 (local)@C:\MinGW-W64\x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1
+Options: 
+
+Options:-DCMAKE_MAKE_PROGRAM=C:/Program Files/JetBrains/CLion 2021.3.4/bin/ninja/win/ninja.exe

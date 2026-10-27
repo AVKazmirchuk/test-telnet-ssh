@@ -1,0 +1,33 @@
+"C:\Program Files\JetBrains\CLion 2021.3.4\bin\cmake\win\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_MAKE_PROGRAM=C:/Program Files/JetBrains/CLion 2021.3.4/bin/ninja/win/ninja.exe" -G Ninja C:\Users\AKazmirchuk\CLionProjects\test-telnet-ssh\libraries\telnetpp-4.0.0
+Building Telnet++ with build type: Debug
+Building Telnet++ with zlib: OFF
+Building Telnet++ with code coverage: OFF
+Building Telnet++ with sanitizers: OFF
+Building Telnet++ with tests: OFF
+Building Telnet++ with only documentation: OFF
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.56.0.windows.2") 
+-- Telnet++ Version: 0.0
+-- The C compiler identification is GNU 13.2.0
+-- The CXX compiler identification is GNU 13.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/MinGW-W64/x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1/bin/gcc.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/MinGW-W64/x86_64-13.2.0-release-posix-seh-ucrt-rt_v11-rev1/bin/c++.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+CMake Error at C:/Program Files/JetBrains/CLion 2021.3.4/bin/cmake/win/share/cmake-3.21/Modules/FindPackageHandleStandardArgs.cmake:230 (message):
+  Could NOT find Boost (missing: Boost_INCLUDE_DIR) (Required is at least
+  version "1.69.0")
+Call Stack (most recent call first):
+  C:/Program Files/JetBrains/CLion 2021.3.4/bin/cmake/win/share/cmake-3.21/Modules/FindPackageHandleStandardArgs.cmake:594 (_FPHSA_FAILURE_MESSAGE)
+  C:/Program Files/JetBrains/CLion 2021.3.4/bin/cmake/win/share/cmake-3.21/Modules/FindBoost.cmake:2345 (find_package_handle_standard_args)
+  CMakeLists.txt:52 (find_package)
+
+
+-- Configuring incomplete, errors occurred!
+See also "C:/Users/AKazmirchuk/CLionProjects/test-telnet-ssh/libraries/telnetpp-4.0.0/cmake-build-debug/CMakeFiles/CMakeOutput.log".
