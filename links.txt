@@ -1,46 +1,41 @@
-https://www.linux.org.ru/forum/talks/10029102
+https://www.linux.org.ru/forum/talks/10029102   Какие сервера ещё доступны через telnet?
 https://gitmemories.com/KazDragon/telnetpp/issues/262
-https://rtfm.co.ua/ru/c-libssh-primer-ssh-klienta/
+https://rtfm.co.ua/ru/c-libssh-primer-ssh-klienta/  C: libssh — пример SSH-«клиента»
 
-https://habr.com/ru/articles/503432/
-https://evileg.com/ru/post/167/
-https://github.com/kmansoo/SimpleTelnetClient/tree/master
+https://habr.com/ru/articles/503432/    Кроссплатформенный многопоточный TCP/IP сервер на C++
+https://evileg.com/ru/post/167/    Qt WinAPI - Урок 007. Работаем с ICMP Ping в Qt
 https://s5.hpc.name/thread/j920/137387/ispolzovanie-telnet-v-c-reshenie-problem-s-podklyucheniem-i-nastroykoy.html
-https://stackoverflow.com/questions/45357819/c-winsock-sending-commands-to-telnet-server
-https://www.cyberforum.ru/blogs/2408861/10316.html
-https://pocoproject.org/about.html#features
+https://www.cyberforum.ru/blogs/2408861/10316.html    POCO, ACE, Loki и другие продвинутые C++ библиотеки
+https://pocoproject.org/about.html#features    Информация о библиотеках POCO C++
 https://docs.pocoproject.org/pro/Poco.Net.DialogSocket.html
-https://vovkos.github.io/doxyrest-showcase/poco/sphinxdoc/class_Poco_Net_DialogSocket.html#details-class-poco-1-1-net-1-1-dialog-socket
+https://vovkos.github.io/doxyrest-showcase/poco/sphinxdoc/class_Poco_Net_DialogSocket.html#details-class-poco-1-1-net-1-1-dialog-socket    class Poco::Net::DialogSocket
 https://pocoproject.org/blog/?p=98
 https://kezunlin.me/blog/compile-and-install-poco-cpp-library-on-windows/
-https://github.com/KazDragon/telnetpp
-https://curl.se/docs/tutorial.html
-https://vovkos.github.io/doxyrest-showcase/poco/sphinx_rtd_theme/class_Poco_Net_DialogSocket.html#details-class-poco-1-1-net-1-1-dialog-socket
-https://github.com/ravijo/simple-telnet-client
-https://github.com/seanmiddleditch/libtelnet
-https://codereview.stackexchange.com/questions/264440/connect-to-telnet-server
-https://listarchives.boost.org/boost-users/att-40895/telnet.cpp
-https://github.com/pocoproject/poco/blob/main/Net/samples/tcpclient/src/tcpclient.cpp
-https://github.com/laudrup/async-ssh/blob/master/doc/index.rst
-https://habr.com/ru/companies/ispsystem/articles/430488/
-https://libssh2.org/examples/ssh2_exec.html    https://github.com/libssh2/libssh2/blob/master/docs/INSTALL_CMAKE.md !
-https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html    https://github.com/openssl/openssl/releases    https://www.msys2.org/
+https://github.com/KazDragon/telnetpp    Telnet++
+https://curl.se/docs/tutorial.html    Руководство по curl
+https://vovkos.github.io/doxyrest-showcase/poco/sphinx_rtd_theme/class_Poco_Net_DialogSocket.html#details-class-poco-1-1-net-1-1-dialog-socket    class Poco::Net::DialogSocket
+https://github.com/pocoproject/poco/blob/main/Net/samples/tcpclient/src/tcpclient.cpp    tcpclient.cpp
+https://habr.com/ru/companies/ispsystem/articles/430488/    Асинхронный обмен данными с удалённым приложением через SSH
+https://libssh2.org/examples/ssh2_exec.html    https://github.com/libssh2/libssh2/blob/master/docs/INSTALL_CMAKE.md    libssh2
+https://cidebycide.blogspot.com/p/libssh2-ssh2exec-with-boostasio.html    libssh2 ssh2_exec с boost::asio
+https://github.com/openssl/openssl/releases    OpenSSL 4.1.0
+https://www.msys2.org/    MSYS2
 https://s5.hpc.name/thread/s720/136856/rabota-s-ssh-v-c-s-ispolzovaniem-biblioteki-libssh2.html
-https://club.shelek.ru/viewart.php?id=35
-https://citforum.ru/book/cook/winsock.shtml
-https://gitmemories.com/KazDragon/telnetpp/issues/262
-https://codedocs.xyz/KazDragon/telnetpp/
-https://thelazyadmin.blog/creating-a-simple-telnet-client-in-c
+https://club.shelek.ru/viewart.php?id=35    https://club.shelek.ru/view.php?id=29    Winsock для всех
+https://citforum.ru/book/cook/winsock.shtml    Самоучитель игры на WINSOCK!!!!!!!!!
+https://gitmemories.com/KazDragon/telnetpp/issues/262    Пример использования Telnet++ с Qt5
+https://codedocs.xyz/KazDragon/telnetpp/    Telnet++
+https://thelazyadmin.blog/creating-a-simple-telnet-client-in-c    Создание простого Telnet-клиента на C ++
 https://s5.hpc.name/thread/t781/70793/prosteyshiy-primer-raboty-s-boost-asio-klient-server.html
-https://iq.opengenus.org/tcp-asynchronous-client-server-in-cpp-boost-asio/
-https://www.boost.org/doc/user-guide/task-networking.html
-https://armantutorial.wordpress.com/2014/07/23/winsock-tutorial-socket-programming-in-c-on-windows-using-codeblock/
-https://github.com/pocoproject/poco/tree/poco-1.15.0-release/Net/samples/tcpclient
+https://iq.opengenus.org/tcp-asynchronous-client-server-in-cpp-boost-asio/    устаревшая версия
+https://www.boost.org/doc/user-guide/task-networking.html    Networking!!!!!!!!!
+https://armantutorial.wordpress.com/2014/07/23/winsock-tutorial-socket-programming-in-c-on-windows-using-codeblock/    Руководство по Winsock – Программирование сокетов на C в Windows!!!!!!!!!
+https://github.com/pocoproject/poco/tree/poco-1.15.0-release/Net/samples/tcpclient    tcpclient
 
-https://github.com/thekamik/Telnet-Client/blob/main/telnet.c
+https://github.com/thekamik/Telnet-Client/blob/main/telnet.c    Simple, non-secure Telnet client for Linux
 https://www.daniweb.com/programming/software-development/threads/21062/telnet-client
-https://citforum.ru/book/cook/winsock.shtml
-https://club.shelek.ru/viewart.php?id=35
+
+
 
 https://github.com/thekamik/Telnet-Client/blob/main/telnet.c
 https://www.gaia-gis.it/gaia-sins/mingw64_how_to.html#open-ssl
