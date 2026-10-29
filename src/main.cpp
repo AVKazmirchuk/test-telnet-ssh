@@ -2211,6 +2211,7 @@ int main(int argc, char *argv[])
 
 
 
+#if 0
 #include <iostream>
 #include <vector>
 #include <string>
@@ -2224,33 +2225,6 @@ int main(int argc, char *argv[])
 #include <telnetpp/options/echo/client.hpp>
 
 #pragma comment(lib, "Ws2_32.lib")
-
-// 1. Сетевой канал для работы с WinSock
-/*struct winsock_channel {
-    SOCKET socket;
-    std::function<void(telnetpp::bytes)> telnet_parser_callback;
-
-    void write(telnetpp::bytes data) {
-        if (!data.empty() && is_alive()) {
-            send(socket, reinterpret_cast<char const*>(data.data()), static_cast<int>(data.size()), 0);
-        }
-    }
-
-    void async_read(std::function<void(telnetpp::bytes)> callback) {
-        telnet_parser_callback = std::move(callback);
-    }
-
-    bool is_alive() const {
-        return socket != INVALID_SOCKET;
-    }
-
-    void close() {
-        if (socket != INVALID_SOCKET) {
-            closesocket(socket);
-            socket = INVALID_SOCKET;
-        }
-    }
-};*/
 
 // Оптимизированный сетевой канал для работы с WinSock
 struct winsock_channel {
@@ -2309,7 +2283,7 @@ int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 1;
 
-    std::string ip_address = "10.178.18.11"; // Сюда IP оборудования
+    std::string ip_address = "10.178.18.33"; // Сюда IP оборудования
     std::string port = "23";
 
     addrinfo hints{}, *result = nullptr;
@@ -2331,6 +2305,7 @@ int main() {
     winsock_channel channel{ connect_socket };
     telnetpp::session session(channel);
 
+
     // Устанавливаем эхо-клиент
     telnetpp::options::echo::client echo_client{session};
     session.install(echo_client);
@@ -2339,10 +2314,6 @@ int main() {
     // Это заставит библиотеку Telnet++ сгенерировать стартовые байты (например, IAC DO ECHO)
     // и отправить их через channel.write() коммутатору.
     echo_client.activate();
-
-    // Если в вашей версии библиотеки метод initiate() доступен напрямую у сессии,
-    // можно вызвать и его для отправки базового набора опций:
-    // session.initiate();
 
     std::cout << "Сессия Telnet инициирована. Ожидание ответа TFortis...\n\n";
 
@@ -2362,9 +2333,9 @@ int main() {
 
                 // И параллельно скармливаем байты в Telnet++, чтобы библиотека автоматически
                 // отправляла подтверждения на опции (Handshake), поддерживая сессию "живой"
-                if (channel.telnet_parser_callback) {
-                    channel.telnet_parser_callback(view);
-                }
+                //if (channel.telnet_parser_callback) {
+                //    channel.telnet_parser_callback(view);
+                //}
             }
             else {
                 std::cout << "\nСоединение разорвано удаленным узлом.\n";
@@ -2373,64 +2344,6 @@ int main() {
             }
         }
     });
-
-    // 4. Основной поток отправки (Клавиатура -> Telnet++ -> WinSock)
-    /*std::string user_input;
-    while (channel.is_alive() && std::getline(std::cin, user_input)) {
-        user_input += "\r\n"; // Важно для Cisco/HP/Huawei
-
-        telnetpp::bytes input_view{
-                reinterpret_cast<uint8_t const*>(user_input.data()),
-                user_input.size()
-        };
-
-        // Отправляем ввод через сессию, чтобы библиотека правильно его обернула
-        session.write(input_view);
-    }*/
-
-
-    /*Альтернативный лайфхак (если пишете скрипт автоматизации):
-
-    Если вы делаете этот клиент не для человека, а для автоматического сбора конфигов, проще всего в самом начале сессии (сразу после ввода пароля) отправить оборудованию команду, отключающую постраничный вывод:
-    • Для Cisco: terminal length 0
-    • Для Huawei: screen-length 0 temporary
-    • Для HP/Aruba: no page
-    После этого show running-config выплюнет весь текст целиком за один раз без всяких --More--.
-            Тестируйте интерактивный посимвольный ввод, теперь пробел обязан отработать штатно! На связи.*/
-
-    // 4. Исправленный поток отправки: посимвольный ввод без ожидания Enter
-    /*std::cout << "[Режим интерактивного ввода активирован]\n";
-
-    while (channel.is_alive()) {
-        if (_kbhit()) { // Проверяем, нажата ли клавиша, чтобы не блокировать поток
-            int ch = _getch();
-
-            std::string send_str = "";
-
-            // Если пользователь нажал Enter (\r или \n)
-            if (ch == '\r' || ch == '\n') {
-                send_str = "\r\n"; // Для оборудования всегда шлем полный CRLF
-            }
-                // Если нажат Backspace (стереть символ)
-            else if (ch == 8) {
-                send_str = "\b \b"; // Шлем спец-последовательность забой-пробел-забой
-            }
-                // Для всех остальных клавиш (включая ПРОБЕЛ)
-            else {
-                send_str = static_cast<char>(ch);
-            }
-
-            // Переводим в байты и отправляем через Telnet++
-            telnetpp::bytes input_view{
-                    reinterpret_cast<uint8_t const*>(send_str.data()),
-                    send_str.size()
-            };
-            session.write(input_view);
-        }
-
-        // Маленькая пауза, чтобы не перегружать процессор холостым циклом
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }*/
 
     // 4. Финальный поток отправки: поддержка стрелочек, Backspace и спецсимволов
     std::cout << "[Режим интерактивного ввода активирован (стрелочки и Backspace поддерживаются)]\n";
@@ -2486,3 +2399,210 @@ int main() {
     WSACleanup();
     return 0;
 }
+#endif
+
+
+
+#if 1
+#include <iostream>
+#include <vector>
+#include <string>
+#include <thread>
+#include <functional>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <conio.h> // Для _getch()
+
+#include <telnetpp/session.hpp>
+#include <telnetpp/options/echo/client.hpp>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+// Оптимизированный сетевой канал для работы с WinSock
+struct winsock_channel {
+    SOCKET socket;
+    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
+
+    void write(telnetpp::bytes data) {
+        if (!data.empty() && is_alive()) {
+            send(socket, reinterpret_cast<char const*>(data.data()), static_cast<int>(data.size()), 0);
+        }
+    }
+
+    void async_read(std::function<void(telnetpp::bytes)> callback) {
+        telnet_parser_callback = std::move(callback);
+    }
+
+    bool is_alive() const { return socket != INVALID_SOCKET; }
+
+    void close() {
+        if (socket != INVALID_SOCKET) {
+            closesocket(socket);
+            socket = INVALID_SOCKET;
+        }
+    }
+};
+
+
+
+// Функция фильтрации: убирает из потока Telnet-команды (IAC) и выводит текст
+/*void print_filtered_text(telnetpp::bytes view) {
+    std::string clean_text = "";
+    for (size_t i = 0; i < view.size(); ++i) {
+        // Если встретили маркер команды Telnet (0xFF / IAC)
+        if (view[i] == 0xFF) {
+            // Большинство команд (DO/DONT/WILL/WONT) занимают 3 байта: 0xFF, команда, опция
+            if (i + 1 < view.size() && (view[i+1] == 0xFB || view[i+1] == 0xFC || view[i+1] == 0xFD || view[i+1] == 0xFE)) {
+                i += 2; // Пропускаем эти 3 служебных байта
+            } else {
+                i += 1; // Пропускаем двухбайтовую команду (например, AYT, NOP)
+            }
+        } else {
+            // Всё остальное — это полезный текст оборудования (приглашение, логин и т.д.)
+            clean_text += static_cast<char>(view[i]);
+        }
+    }
+    if (!clean_text.empty()) {
+        std::cout << clean_text << std::flush;
+    }
+}*/
+
+int main() {
+    // Настройка WinSock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 1;
+
+    std::string ip_address = "10.178.18.11"; // Сюда IP оборудования
+    std::string port = "23";
+
+    addrinfo hints{}, *result = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    getaddrinfo(ip_address.c_str(), port.c_str(), &hints, &result);
+    SOCKET connect_socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+
+    if (connect(connect_socket, result->ai_addr, static_cast<int>(result->ai_addrlen)) == SOCKET_ERROR) {
+        std::cerr << "Connection failed.\n";
+        WSACleanup();
+        return 1;
+    }
+    freeaddrinfo(result);
+    std::cout << "Успешно подключено к оборудованию!\n\n";
+
+    // 2. Инициализация сессии
+    winsock_channel channel{ connect_socket };
+    telnetpp::session session(channel);
+
+
+    // Устанавливаем эхо-клиент
+    telnetpp::options::echo::client echo_client{session};
+    session.install(echo_client);
+
+    // Функция для рекурсивного чтения ОЧИЩЕННЫХ данных из сессии Telnet++
+// Объявляем лямбду через std::function для возможности рекурсивного вызова
+    std::function<void(telnetpp::bytes)> read_handler = [&](telnetpp::bytes data) {
+        if (!data.empty()) {
+            // Сюда Telnet++ отдает ИСКЛЮЧИТЕЛЬНО чистый текст (без 0xFF и команд)
+            std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
+            std::cout << clean_text << std::flush;
+        }
+        // ВАЖНО: Как только порция данных обработана, мы ОБЯЗАНЫ запросить у сессии
+        // чтение следующей порции. Это перезапускает внутренний конвейер библиотеки.
+        session.async_read(read_handler);
+    };
+
+// Запускаем первую петлю ожидания очищенного текста от сессии
+    session.async_read(read_handler);
+
+    // --- ДОБАВЛЕНО ДЛЯ TFORTIS: Инициируем Telnet Handshake ---
+    // Это заставит библиотеку Telnet++ сгенерировать стартовые байты (например, IAC DO ECHO)
+    // и отправить их через channel.write() коммутатору.
+    echo_client.activate();
+
+    std::cout << "Сессия Telnet инициирована. Ожидание ответа TFortis...\n\n";
+
+    // 3. Поток чтения (WinSock -> Telnet++)
+    std::thread receive_thread([&]() {
+        std::vector<char> recv_buffer(4096);
+        while (channel.is_alive()) {
+            int bytes_received = recv(channel.socket, recv_buffer.data(), static_cast<int>(recv_buffer.size()), 0);
+            if (bytes_received > 0) {
+                telnetpp::bytes view{
+                        reinterpret_cast<uint8_t*>(recv_buffer.data()),
+                        static_cast<size_t>(bytes_received)
+                };
+
+                // ТЕПЕРЬ МЫ СМЕЛО РАСКОММЕНТИРУЕМ ЭТУ СТРОКУ!
+                // Мы скармливаем сырые байты в Telnet++.
+                // Библиотека сама:
+                // 1. Ответит коммутатору на запросы опций через channel.write().
+                // 2. Очистит текст от бинарного мусора и передаст его в нашу лямбду `read_handler`.
+                if (channel.telnet_parser_callback) {
+                    channel.telnet_parser_callback(view);
+                }
+            }
+            else {
+                std::cout << "\nСоединение разорвано удаленным узлом.\n";
+                channel.close();
+                break;
+            }
+        }
+    });
+
+    // 4. Финальный поток отправки: поддержка стрелочек, Backspace и спецсимволов
+    std::cout << "[Режим интерактивного ввода активирован (стрелочки и Backspace поддерживаются)]\n";
+
+    while (channel.is_alive()) {
+        if (_kbhit()) {
+            int ch = _getch();
+            std::string send_str = "";
+
+            // 1. ОБРАБОТКА СТРЕЛОЧЕК И РАСШИРЕННЫХ КЛАВИШ
+            // Если _getch вернул 0 или 224, значит нажата стрелка, Home, End или Del
+            if (ch == 0 || ch == 224) {
+                int extended_ch = _getch(); // Читаем второй байт кода клавиши
+
+                // Переводим коды Windows-консоли в стандартные ANSI-последовательности (Escape-коды),
+                // которые понимает абсолютно любое сетевое оборудование (Cisco, Huawei, TFortis)
+                if (extended_ch == 72)      send_str = "\x1B[A"; // Стрелка ВВЕРХ (история команд)
+                else if (extended_ch == 80) send_str = "\x1B[B"; // Стрелка ВНИЗ (история команд)
+                else if (extended_ch == 77) send_str = "\x1B[C"; // Стрелка ВПРАВО
+                else if (extended_ch == 75) send_str = "\x1B[D"; // Стрелка ВЛЕВО
+            }
+                // 2. ОБРАБОТКА ENTER
+            else if (ch == '\r' || ch == '\n') {
+                send_str = "\r\n";
+            }
+                // 3. ОБРАБОТКА BACKSPACE (Исправлено для коммутаторов)
+            else if (ch == 8) {
+                send_str = "\x7F"; // Шлем ASCII Delete (0x7F). Оборудование само сотрет символ на экране.
+            }
+                // 4. ОБРАБОТКА СТАНДАРТНЫХ СИМВОЛОВ И ПРОБЕЛА
+            else {
+                send_str = static_cast<char>(ch);
+            }
+
+            // Если клавиша распознана, отправляем через Telnet++
+            if (!send_str.empty()) {
+                telnetpp::bytes input_view{
+                        reinterpret_cast<uint8_t const*>(send_str.data()),
+                        send_str.size()
+                };
+                session.write(input_view);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+
+    channel.close();
+
+    WSACleanup();
+    return 0;
+}
+#endif
+
+
+
