@@ -2666,7 +2666,7 @@ namespace asio = boost::asio;
 using asio::ip::tcp;
 
 // Корутина для асинхронного чтения из сокета оборудования
-asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channel) {
+asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channel, asio::steady_timer& supervisor_timer) {
     std::vector<char> recv_buffer(4096);
 
     try {
@@ -2700,8 +2700,9 @@ asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channe
         }
     }
 
-    // В случае обрыва гарантированно закрываем наш канал
+    // Сокет закрылся. Мгновенно будим главную корутину-супервизор!
     channel.close();
+    supervisor_timer.cancel(); // Этот вызов прервет сон таймера немедленно
 }
 
 
@@ -2754,6 +2755,7 @@ asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& se
     }
 }
 
+/*
 // Главная корутина управления сессией
 asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
     // 1. Инициализируем наш канал и сессию Telnet++
@@ -2782,10 +2784,10 @@ asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
     // Запускаем асинхронное чтение и ввод независимо друг от друга
     asio::co_spawn(executor, read_from_device(socket, channel), asio::detached);
     co_await handle_keyboard(socket, session);
-}
+}*/
 
-/*
- * // Главная корутина управления сессией (Ваш улучшенный вариант)
+
+    // Главная корутина управления сессией (Ваш улучшенный вариант)
 asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
     asio_channel channel{ socket };
     telnetpp::session session(channel);
@@ -2805,32 +2807,41 @@ asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
 
     auto executor = co_await asio::this_coro::executor;
 
+        asio::steady_timer keep_alive_timer(executor);
+
     // ТЕПЕРЬ МЫ РЕГИСТРИРУЕМ ОБЕ КОРУТИНЫ РАВНОПРАВНО!
     // Они обе уходят в планировщик io_context как независимые фоновые задачи
-    asio::co_spawn(executor, read_from_device(socket, channel), asio::detached);
+        // Запускаем чтение, передавая таймер по ссылке
+    asio::co_spawn(executor, read_from_device(socket, channel, keep_alive_timer), asio::detached);
     asio::co_spawn(executor, handle_keyboard(socket, session), asio::detached);
 
     // А как теперь "заснуть" самой родительской корутине?
     // Мы просто асинхронно ждем, пока канал активен.
     // Для этого можно использовать простой асинхронный таймер, который проверяет liveness,
     // либо сделать бесконечный цикл ожидания, который не тратит CPU:
-    asio::steady_timer keep_alive_timer(executor);
-    while (channel.is_alive()) {
-        keep_alive_timer.expires_after(std::chrono::seconds(1));
+        try {
+            // Выставляем таймер на "бесконечность"
+            keep_alive_timer.expires_at(std::chrono::steady_clock::time_point::max());
 
-        // Засыпаем на 1 секунду. Если за эту секунду сокет закроется,
-        // цикл прервется на следующей итерации
-        co_await keep_alive_timer.async_wait(asio::use_awaitable);
-    }
+            // Корутина засыпает навсегда. Она проснется ТОЛЬКО тогда,
+            // когда read_from_device вызовет keep_alive_timer.cancel()
+            co_await keep_alive_timer.async_wait(asio::use_awaitable);
+        }
+        catch (const boost::system::system_error& e) {
+            // operation_aborted означает, что таймер был успешно отменен извне.
+            // Для нас это зеленый свет: сессия завершена, выходим мгновенно!
+            if (e.code() != asio::error::operation_aborted) {
+                throw;
+            }
+        }
 
-    std::cout << "\n[Система] Главная управляющая корутина завершает работу.\n";
+        std::cout << "\n[Система] Главная управляющая корутина мгновенно завершила работу.\n";
 }
 
- */
 
 int main() {
     try {
-        std::string ip_address = "10.178.18.33"; //10.178.18.11
+        std::string ip_address = "nethack.alt.org"; //10.178.18.11 nethack.alt.org
         std::string port = "23";
 
         // Главный управляющий контекст Boost.Asio

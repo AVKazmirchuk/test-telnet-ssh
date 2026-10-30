@@ -49,7 +49,9 @@ if (TELNETPP_DOC_ONLY)
 endif()
 
 # Telnet++ requires at least Boost 1.69.
-find_package(Boost 1.69.0 REQUIRED)
+set(Boost_INCLUDE_DIR "C:\\boost_1_87_0")
+find_package(Boost REQUIRED)
+#find_package(Boost 1.69.0 REQUIRED)
 
 # If we are building with ZLib, then we require the ZLib library
 if (${TELNETPP_WITH_ZLIB})
@@ -287,6 +289,7 @@ install(
         ${CMAKE_INSTALL_DATADIR}/telnetpp-${TELNETPP_VERSION}
 )
 
+
 if (TELNETPP_WITH_TESTS)
 enable_testing()
 
@@ -354,7 +357,7 @@ target_link_libraries(telnetpp_tester
         GTest::Main
 )
 
-gtest_discover_tests(telnetpp_tester)
+#gtest_discover_tests(telnetpp_tester)
 endif()
 
 # Add customizations for packaging
