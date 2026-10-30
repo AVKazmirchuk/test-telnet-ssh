@@ -2211,6 +2211,7 @@ int main(int argc, char *argv[])
 
 
 
+//Telnet, v.1
 #if 0
 #include <iostream>
 #include <vector>
@@ -2403,7 +2404,8 @@ int main() {
 
 
 
-#if 1
+//Telnet, v.2
+#if 0
 #include <iostream>
 #include <vector>
 #include <string>
@@ -2472,7 +2474,7 @@ int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 1;
 
-    std::string ip_address = "10.178.18.11"; // Сюда IP оборудования
+    std::string ip_address = "10.178.18.33"; // Сюда IP оборудования 10.178.18.11 (33)
     std::string port = "23";
 
     addrinfo hints{}, *result = nullptr;
@@ -2509,7 +2511,7 @@ int main() {
         }
         // ВАЖНО: Как только порция данных обработана, мы ОБЯЗАНЫ запросить у сессии
         // чтение следующей порции. Это перезапускает внутренний конвейер библиотеки.
-        session.async_read(read_handler);
+        //session.async_read(read_handler);
     };
 
 // Запускаем первую петлю ожидания очищенного текста от сессии
@@ -2605,4 +2607,258 @@ int main() {
 #endif
 
 
+
+//Telnet, v.3
+#if 1
+
+#include <iostream>
+#include <vector>
+#include <string>
+#include <conio.h>
+
+#include <boost/asio.hpp>
+#include <telnetpp/session.hpp>
+#include <telnetpp/options/echo/client.hpp>
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+struct asio_channel {
+    tcp::socket& socket;
+    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
+
+    // Синхронная отправка (требуется концептом Telnet++)
+    void write(telnetpp::bytes data) {
+        if (!data.empty() && is_alive()) {
+            boost::system::error_code ec;
+            asio::write(socket, asio::buffer(data.data(), data.size()), ec);
+            // Использование перегрузки с error_code предотвращает генерацию
+            // исключений, если сокет оборвался прямо во время отправки
+        }
+    }
+
+    // Регистрация парсера библиотеки
+    void async_read(std::function<void(telnetpp::bytes)> callback) {
+        telnet_parser_callback = std::move(callback);
+    }
+
+    // Проверка статуса сокета для концепта Telnet++
+    bool is_alive() const {
+        return socket.is_open();
+    }
+
+    // Корректное закрытие сокета в стиле Boost.Asio
+    void close() {
+        if (socket.is_open()) {
+            boost::system::error_code ec;
+            // 1. Отключаем отправку и прием (Graceful Shutdown)
+            socket.shutdown(tcp::socket::shutdown_both, ec);
+            // 2. Освобождаем системный дескриптор
+            socket.close(ec);
+        }
+    }
+};
+
+
+
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Корутина для асинхронного чтения из сокета оборудования
+asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channel) {
+    std::vector<char> recv_buffer(4096);
+
+    try {
+        while (channel.is_alive()) {
+            std::size_t bytes_received = co_await socket.async_read_some(
+                    asio::buffer(recv_buffer),
+                    asio::use_awaitable
+            );
+
+            if (bytes_received > 0) {
+                telnetpp::bytes view{
+                        reinterpret_cast<uint8_t*>(recv_buffer.data()),
+                        bytes_received
+                };
+
+                if (channel.telnet_parser_callback) {
+                    channel.telnet_parser_callback(view);
+                }
+            }
+        }
+    }
+    catch (const boost::system::system_error& e) {
+        // Проверяем код ошибки. Если это EOF (нормальное закрытие)
+        // или connection_reset (принудительный выход через exit)
+        if (e.code() == asio::error::eof || e.code() == asio::error::connection_reset) {
+            std::cout << "\n[Система] Сессия Telnet завершена коммутатором.\n";
+        }
+        else {
+            // Выводим только реальные, критические сетевые сбои
+            std::cerr << "\n[Критическая ошибка сети]: " << e.code().message() << " (Код: " << e.code().value() << ")\n";
+        }
+    }
+
+    // В случае обрыва гарантированно закрываем наш канал
+    channel.close();
+}
+
+
+// Корутина для обработки клавиатуры
+asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& session) {
+    auto executor = co_await asio::this_coro::executor;
+    asio::steady_timer timer(executor);
+
+    std::cout << "[Режим интерактивного ввода активирован (Boost.Asio 1.87)]\n";
+
+    try {
+        while (session.is_alive()) {
+            if (_kbhit()) {
+                int ch = _getch();
+                std::string send_str = "";
+
+                if (ch == 0 || ch == 224) {
+                    int extended_ch = _getch();
+                    if (extended_ch == 72)      send_str = "\x1B[A"; // ВВЕРХ
+                    else if (extended_ch == 80) send_str = "\x1B[B"; // ВНИЗ
+                    else if (extended_ch == 77) send_str = "\x1B[C"; // ВПРАВО
+                    else if (extended_ch == 75) send_str = "\x1B[D"; // ВЛЕВО
+                }
+                else if (ch == '\r' || ch == '\n') {
+                    send_str = "\r\n";
+                }
+                else if (ch == 8) {
+                    send_str = "\x7F"; // Delete / Backspace
+                }
+                else {
+                    send_str = static_cast<char>(ch);
+                }
+
+                if (!send_str.empty()) {
+                    telnetpp::bytes input_view{
+                            reinterpret_cast<uint8_t const*>(send_str.data()),
+                            send_str.size()
+                    };
+                    session.write(input_view);
+                }
+            }
+
+            // Небольшая асинхронная пауза, чтобы не грузить процессор в цикле _kbhit
+            timer.expires_after(std::chrono::milliseconds(10));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "\n[Ошибка ввода]: " << e.what() << "\n";
+    }
+}
+
+// Главная корутина управления сессией
+asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
+    // 1. Инициализируем наш канал и сессию Telnet++
+    asio_channel channel{ socket };
+    telnetpp::session session(channel);
+
+    // 2. Регистрируем ОДНОКРАТНЫЙ персистентный вывод чистого текста
+    session.async_read([&](telnetpp::bytes data) {
+        if (!data.empty()) {
+            std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
+            std::cout << clean_text << std::flush;
+        }
+    });
+
+    // 3. Настраиваем и активируем Handshake для TFortis
+    telnetpp::options::echo::client echo_client{session};
+    session.install(echo_client);
+    echo_client.activate();
+
+    std::cout << "Сессия Telnet инициирована через Boost.Asio. Ожидание TFortis...\n\n";
+
+    // 4. Запускаем корутины чтения и клавиатуры "параллельно"
+    // Используем реализацию кооперативной многозадачности
+    auto executor = co_await asio::this_coro::executor;
+
+    // Запускаем асинхронное чтение и ввод независимо друг от друга
+    asio::co_spawn(executor, read_from_device(socket, channel), asio::detached);
+    co_await handle_keyboard(socket, session);
+}
+
+/*
+ * // Главная корутина управления сессией (Ваш улучшенный вариант)
+asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
+    asio_channel channel{ socket };
+    telnetpp::session session(channel);
+
+    session.async_read([&](telnetpp::bytes data) {
+        if (!data.empty()) {
+            std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
+            std::cout << clean_text << std::flush;
+        }
+    });
+
+    telnetpp::options::echo::client echo_client{session};
+    session.install(echo_client);
+    echo_client.activate();
+
+    std::cout << "Сессия Telnet инициирована. Ожидание TFortis...\n\n";
+
+    auto executor = co_await asio::this_coro::executor;
+
+    // ТЕПЕРЬ МЫ РЕГИСТРИРУЕМ ОБЕ КОРУТИНЫ РАВНОПРАВНО!
+    // Они обе уходят в планировщик io_context как независимые фоновые задачи
+    asio::co_spawn(executor, read_from_device(socket, channel), asio::detached);
+    asio::co_spawn(executor, handle_keyboard(socket, session), asio::detached);
+
+    // А как теперь "заснуть" самой родительской корутине?
+    // Мы просто асинхронно ждем, пока канал активен.
+    // Для этого можно использовать простой асинхронный таймер, который проверяет liveness,
+    // либо сделать бесконечный цикл ожидания, который не тратит CPU:
+    asio::steady_timer keep_alive_timer(executor);
+    while (channel.is_alive()) {
+        keep_alive_timer.expires_after(std::chrono::seconds(1));
+
+        // Засыпаем на 1 секунду. Если за эту секунду сокет закроется,
+        // цикл прервется на следующей итерации
+        co_await keep_alive_timer.async_wait(asio::use_awaitable);
+    }
+
+    std::cout << "\n[Система] Главная управляющая корутина завершает работу.\n";
+}
+
+ */
+
+int main() {
+    try {
+        std::string ip_address = "10.178.18.33"; //10.178.18.11
+        std::string port = "23";
+
+        // Главный управляющий контекст Boost.Asio
+        asio::io_context io_context;
+
+        // Резолвер и сокет в стиле Boost 1.87
+        tcp::resolver resolver(io_context);
+        tcp::socket socket(io_context);
+
+        std::cout << "Подключение к оборудованию " << ip_address << "...\n";
+
+        // Синхронное подключение для простоты старта (можно переписать на асинхронное)
+        asio::connect(socket, resolver.resolve(ip_address, port));
+        std::cout << "Успешно подключено к оборудованию!\n\n";
+
+        // Запускаем главную корутину автоматизации/ввода
+        asio::co_spawn(io_context, telnet_session_logic(socket), asio::detached);
+
+        // Запускаем цикл обработки событий.
+        // Теперь ВСЯ программа работает внутри этого вызова, используя ровно 1 поток!
+        io_context.run();
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Критическая ошибка: " << e.what() << "\n";
+    }
+
+    return 0;
+}
+
+#endif
 
