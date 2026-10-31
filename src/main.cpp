@@ -1925,12 +1925,12 @@ int main(int argc, char* argv[]) {
 #include <sys/time.h>  /* for timeval */
 #endif
 
-static const char *hostname = "10.11.5.2";
-static const char *commandline = "show version";
+static const char *hostname = "192.168.0.101";
+static const char *commandline = "systeminfo";
 static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
 static const char *privkey = "/home/username/.ssh/id_rsa";
-static const char *username = "akazmirchuk";
-static const char *password = "cdtn0a0h";
+static const char *username = "sshuser";
+static const char *password = "sshuser";
 
 static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
 {
@@ -2210,6 +2210,314 @@ int main(int argc, char *argv[])
 #endif
 
 
+
+//SSH, v.2
+#if 1
+#include <iostream>
+#include <vector>
+#include <string>
+#include <regex>
+
+#include <conio.h>
+#include <boost/asio.hpp>
+#include <libssh2.h>
+#include <windows.h>
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Асинхронный канал SSH (адаптирован под скрытую аутентификацию)
+class asio_ssh_channel {
+private:
+    tcp::socket& socket_;
+    LIBSSH2_SESSION* session_ = nullptr;
+    LIBSSH2_CHANNEL* channel_ = nullptr;
+    bool is_alive_ = false;
+
+    asio::awaitable<void> async_wait_socket() {
+        int dir = libssh2_session_block_directions(session_);
+
+        if (dir & LIBSSH2_SESSION_BLOCK_INBOUND) {
+            // as_tuple заставит async_wait вернуть [boost::system::error_code] вместо генерации throw
+            auto [ec] = co_await socket_.async_wait(
+                    tcp::socket::wait_read,
+                    asio::as_tuple(asio::use_awaitable)
+            );
+        } else if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
+            auto [ec] = co_await socket_.async_wait(
+                    tcp::socket::wait_write,
+                    asio::as_tuple(asio::use_awaitable)
+            );
+        }
+    }
+
+
+public:
+    std::function<void(std::string_view)> on_data_callback = nullptr;
+
+    asio_ssh_channel(tcp::socket& socket) : socket_(socket) {}
+    ~asio_ssh_channel() { close(); }
+
+    bool is_alive() const { return is_alive_ && socket_.is_open(); }
+
+    asio::awaitable<bool> async_init(const std::string& user, const std::string& pass) {
+        session_ = libssh2_session_init();
+        if (!session_) co_return false;
+
+        libssh2_session_set_blocking(session_, 0);
+
+        int rc;
+        while ((rc = libssh2_session_handshake(session_, socket_.native_handle())) == LIBSSH2_ERROR_EAGAIN) {
+            co_await async_wait_socket();
+        }
+        if (rc) {
+            std::cerr << "[SSH] Handshake failed: " << rc << "\n";
+            co_return false;
+        }
+
+        // Проходим официальную SSH-аутентификацию по паролю до открытия Shell
+        while ((rc = libssh2_userauth_password(session_, user.c_str(), pass.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+            co_await async_wait_socket();
+        }
+        if (rc) {
+            std::cerr << "[SSH] Аутентификация отклонена оборудованием.\n";
+            co_return false;
+        }
+
+        while (!(channel_ = libssh2_channel_open_session(session_))) {
+            if (libssh2_session_last_error(session_, nullptr, nullptr, 0) != LIBSSH2_ERROR_EAGAIN) co_return false;
+            co_await async_wait_socket();
+        }
+
+        // Передаем nullptr и 0 в качестве 4-го и 5-го параметров (modes/modes_len)
+        while ((rc = libssh2_channel_request_pty_ex(
+                channel_,       // 1. Указатель на канал
+                "xterm",        // 2. Тип терминала
+                5,              // 3. Длина строки типа терминала
+                nullptr,        // 4. Указатель на режимы терминала (modes) — нам не нужны
+                0,              // 5. Длина режимов терминала (modes_len)
+                160,            // 6. Ширина в символах
+                40,             // 7. Высота в строках
+                0,              // 8. Ширина в пикселях
+                0               // 9. Высота в пикселях
+        )) == LIBSSH2_ERROR_EAGAIN)
+        {
+            co_await async_wait_socket();
+        }
+        while ((rc = libssh2_channel_shell(channel_)) == LIBSSH2_ERROR_EAGAIN) co_await async_wait_socket();
+
+        is_alive_ = true;
+        co_return true;
+    }
+
+    void write(std::string_view data) {
+        if (is_alive() && !data.empty()) {
+            libssh2_channel_write(channel_, data.data(), data.size());
+        }
+    }
+
+    void async_read(std::function<void(std::string_view)> callback) { on_data_callback = std::move(callback); }
+
+    asio::awaitable<void> process_read() {
+        std::vector<char> buffer(4096);
+        while (is_alive()) {
+            ssize_t nread = libssh2_channel_read(channel_, buffer.data(), buffer.size());
+            if (nread > 0) {
+                if (on_data_callback) on_data_callback(std::string_view(buffer.data(), nread));
+            } else if (nread == LIBSSH2_ERROR_EAGAIN) {
+                co_await async_wait_socket();
+            } else {
+                is_alive_ = false;
+            }
+        }
+    }
+
+    void close() {
+        is_alive_ = false;
+        if (channel_) { libssh2_channel_free(channel_); channel_ = nullptr; }
+        if (session_) { libssh2_session_disconnect(session_, "Liveness Shutdown"); libssh2_session_free(session_); session_ = nullptr; }
+    }
+};
+
+// Выделенная корутина чтения SSH
+asio::awaitable<void> read_from_ssh_device(asio_ssh_channel& channel, asio::steady_timer& supervisor_timer) {
+    try {
+        co_await channel.process_read();
+    } catch (...) {}
+    std::cout << "\n[Система] SSH сессия завершена.\n";
+    channel.close();
+    supervisor_timer.cancel();
+}
+
+// Выделенная корутина клавиатуры для SSH
+asio::awaitable<void> handle_ssh_keyboard(asio_ssh_channel& channel) {
+    auto executor = co_await asio::this_coro::executor;
+    asio::steady_timer timer(executor);
+    std::cout << "[Режим интерактивного ввода SSH активирован]\n";
+
+    try {
+        while (channel.is_alive()) {
+            if (_kbhit()) {
+                int ch = _getch();
+                std::string send_str = "";
+                if (ch == 0 || ch == 224) {
+                    int ext = _getch();
+                    if (ext == 72) send_str = "\x1B[A";      // ВВЕРХ
+                    else if (ext == 80) send_str = "\x1B[B"; // ВНИЗ
+                    else if (ext == 77) send_str = "\x1B[C"; // ВПРАВО
+                    else if (ext == 75) send_str = "\x1B[D"; // ВЛЕВО
+                }
+                else if (ch == '\r' || ch == '\n') send_str = "\r\n";
+                else if (ch == 8) send_str = "\x7F"; // Backspace
+                else send_str = static_cast<char>(ch);
+
+                if (!send_str.empty()) channel.write(send_str);
+            }
+            timer.expires_after(std::chrono::milliseconds(10));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
+    } catch (...) {}
+}
+
+// Логика управления сессией
+asio::awaitable<void> ssh_session_logic(tcp::socket& socket, std::string user, std::string pass) {
+    auto executor = co_await asio::this_coro::executor;
+    asio_ssh_channel channel{ socket };
+
+    std::cout << "[SSH] Установка защищенного соединения...\n";
+    if (!co_await channel.async_init(user, pass)) {
+        std::cerr << "[Ошибка] Не удалось авторизоваться или открыть Shell.\n";
+        co_return;
+    }
+
+    channel.async_read([
+                               // Захватываем состояние стейт-машины между вызовами чанков
+                               in_esc = false,
+                               in_csi = false,
+                               ansi_buffer = std::string{}
+                       ](std::string_view text) mutable {
+        if (text.empty()) return;
+
+        std::string output;
+        output.reserve(text.size());
+
+        for (char ch : text) {
+            if (!in_esc && !in_csi) {
+                if (ch == '\x1B') {
+                    in_esc = true;
+                    ansi_buffer.clear();
+                    ansi_buffer.push_back(ch);
+                } else {
+                    // Обычный печатный символ
+                    output.push_back(ch);
+                }
+            }
+            else if (in_esc) {
+                ansi_buffer.push_back(ch);
+                if (ch == '[') {
+                    in_esc = false;
+                    in_csi = true;
+                } else {
+                    // Одиночный ESC-код (не CSI) — сбрасываем
+                    in_esc = false;
+                    output.append(ansi_buffer);
+                }
+            }
+            else if (in_csi) {
+                ansi_buffer.push_back(ch);
+                // Буквы от 'a' до 'z' и от 'A' до 'Z' завершают CSI-последовательность
+                if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+                    in_csi = false;
+
+                    // Проверяем: если это команда движения курсора вверх (заканчивается на 'A')
+                    // или абсолютного позиционирования (заканчивается на 'H' или 'f')
+                    if (ch == 'A' || ch == 'H' || ch == 'f') {
+                        // ИГНОРИРУЕМ: просто не пускаем этот код в консоль Windows,
+                        // тем самым запрещая промпту прыгать вверх и затирать текст!
+                    } else {
+                        // Все остальные коды (например, цвета 'm') — разрешаем
+                        output.append(ansi_buffer);
+                    }
+                }
+            }
+        }
+
+        if (!output.empty()) {
+            std::cout << output << std::flush;
+        }
+    });
+
+
+
+
+    asio::steady_timer keep_alive_timer(executor);
+    asio::co_spawn(executor, read_from_ssh_device(channel, keep_alive_timer), asio::detached);
+    asio::co_spawn(executor, handle_ssh_keyboard(channel), asio::detached);
+
+    try {
+        keep_alive_timer.expires_at(std::chrono::steady_clock::time_point::max());
+        co_await keep_alive_timer.async_wait(asio::use_awaitable);
+    } catch (const boost::system::system_error& e) {
+        if (e.code() != asio::error::operation_aborted) throw;
+    }
+    std::cout << "[Система] Главная SSH корутина завершена.\n";
+}
+
+int main() {
+
+#ifdef _WIN32
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            // Дополнительно можно включить ENABLE_PROCESSED_OUTPUT, если строки все еще съезжают
+            dwMode |= ENABLE_PROCESSED_OUTPUT;
+            SetConsoleMode(hOut, dwMode);
+        }
+    }
+#endif
+
+
+    // 1. Запрашиваем данные до старта асинхронного движка
+    std::string ip = "192.168.0.101"; // Укажите IP вашего TFortis
+    std::string user, pass;
+    std::cout << "Введите логин SSH: "; std::cin >> user;
+    std::cout << "Введите пароль SSH: ";
+
+    // Скрытие ввода символов пароля (опционально, для простоты обычный cin)
+    std::cin >> pass;
+
+    // 2. Инициализируем глобальный контекст libssh2
+    if (libssh2_init(0)) {
+        std::cerr << "Libssh2 init failed\n";
+        return 1;
+    }
+
+    try {
+        asio::io_context io_context;
+        tcp::resolver resolver(io_context);
+        tcp::socket socket(io_context);
+
+        std::cout << "Подключение к " << ip << ":22...\n";
+        asio::connect(socket, resolver.resolve(ip, "22"));
+        std::cout << "TCP сокет подключен. Запуск корутин...\n";
+
+        asio::co_spawn(io_context, ssh_session_logic(socket, user, pass), asio::detached);
+        io_context.run();
+
+    } catch (const std::exception& e) {
+        std::cerr << "Критическая ошибка: " << e.what() << "\n";
+    }
+
+    libssh2_exit();
+    return 0;
+}
+
+#endif
 
 //Telnet, v.1
 #if 0
@@ -2609,7 +2917,7 @@ int main() {
 
 
 //Telnet, v.3
-#if 1
+#if 0
 
 #include <iostream>
 #include <vector>
@@ -2755,36 +3063,6 @@ asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& se
     }
 }
 
-/*
-// Главная корутина управления сессией
-asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
-    // 1. Инициализируем наш канал и сессию Telnet++
-    asio_channel channel{ socket };
-    telnetpp::session session(channel);
-
-    // 2. Регистрируем ОДНОКРАТНЫЙ персистентный вывод чистого текста
-    session.async_read([&](telnetpp::bytes data) {
-        if (!data.empty()) {
-            std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
-            std::cout << clean_text << std::flush;
-        }
-    });
-
-    // 3. Настраиваем и активируем Handshake для TFortis
-    telnetpp::options::echo::client echo_client{session};
-    session.install(echo_client);
-    echo_client.activate();
-
-    std::cout << "Сессия Telnet инициирована через Boost.Asio. Ожидание TFortis...\n\n";
-
-    // 4. Запускаем корутины чтения и клавиатуры "параллельно"
-    // Используем реализацию кооперативной многозадачности
-    auto executor = co_await asio::this_coro::executor;
-
-    // Запускаем асинхронное чтение и ввод независимо друг от друга
-    asio::co_spawn(executor, read_from_device(socket, channel), asio::detached);
-    co_await handle_keyboard(socket, session);
-}*/
 
 
     // Главная корутина управления сессией (Ваш улучшенный вариант)
