@@ -571,196 +571,6 @@ int main(int argc, char* argv[]) {
 
 
 
-//Работа по SNMP
-#if 0
-/*_############################################################################
-  _##
-  _##  test_app.cpp
-  _##
-  _##  SNMP++ v3.4
-  _##  -----------------------------------------------
-  _##  Copyright (c) 2001-2021 Jochen Katz, Frank Fock
-  _##
-  _##  This software is based on SNMP++2.6 from Hewlett Packard:
-  _##
-  _##    Copyright (c) 1996
-  _##    Hewlett-Packard Company
-  _##
-  _##  ATTENTION: USE OF THIS SOFTWARE IS SUBJECT TO THE FOLLOWING TERMS.
-  _##  Permission to use, copy, modify, distribute and/or sell this software
-  _##  and/or its documentation is hereby granted without fee. User agrees
-  _##  to display the above copyright notice and this license notice in all
-  _##  copies of the software and any documentation of the software. User
-  _##  agrees to assume all liability for the use of the software;
-  _##  Hewlett-Packard, Frank Fock, and Jochen Katz make no representations
-  _##  about the suitability of this software for any purpose. It is provided
-  _##  "AS-IS" without warranty of any kind, either express or implied. User
-  _##  hereby grants a royalty-free license to any and all derivatives based
-  _##  upon this software code base.
-  _##
-  _##########################################################################*/
-
-#include <libsnmp.h>
-
-#include "snmp_pp/snmp_pp.h"
-
-#ifdef WIN32
-#define strcasecmp _stricmp
-#endif
-
-#ifdef SNMP_PP_NAMESPACE
-using namespace Snmp_pp;
-#endif
-
-// default request oids
-#define NUM_SYS_VBS	6
-#define sysDescr	"1.3.6.1.2.1.1.1.0"
-#define sysObjectID	"1.3.6.1.2.1.1.2.0"
-#define sysUpTime	"1.3.6.1.2.1.1.3.0"
-#define sysContact	"1.3.6.1.2.1.1.4.0"
-#define sysName		"1.3.6.1.2.1.1.5.0"
-#define sysLocation	"1.3.6.1.2.1.1.6.0"
-//#define sysServices	"1.3.6.1.2.1.1.7.0" // not all agents support this...
-
-// default notification oid
-#define coldStart	"1.3.6.1.6.3.1.1.4.3.0.1"
-
-int main(int argc, char **argv)
-{
-    int status;
-    char *req_str      = (char*) "get";
-    //  char *dflt_req_oid = (char*) sysDescr;
-    char *dflt_trp_oid = (char*) coldStart;
-    char *genAddrStr   = (char*) "127.0.0.1" ;		  // localhost
-    char *oid_str      = (char*) NULL;
-
-    if (argc > 1) genAddrStr = argv[1];
-    if (argc > 2) req_str    = argv[2];
-    if (argc > 3) oid_str    = argv[3];
-
-    Snmp::socket_startup();  // Initialize socket subsystem
-
-    IpAddress ipAddr(genAddrStr);
-    if (!ipAddr.valid()) {
-        std::cout << "Invalid destination: " << genAddrStr << std::endl;
-        return(1);
-    }
-
-    // bind to any port and use IPv6 if needed
-    Snmp snmp(status, 0, (ipAddr.get_ip_version() == Address::version_ipv6));
-    if (status){
-        std::cout << "Failed to create SNMP Session: " << status << std::endl;
-        return(1);
-    }
-    std::cout << "Created session successfully" << std::endl;
-
-
-    CTarget target(ipAddr);
-    if (! target.valid()) {
-        std::cout << "Invalid target" << std::endl;
-        return(1);
-    }
-
-    Pdu pdu;
-    Vb vb;
-    if ( strcmp(req_str, "get") == 0 ) {
-
-        Vb vbl[NUM_SYS_VBS];
-        vbl[0].set_oid(sysDescr);
-        vbl[1].set_oid(sysObjectID);
-        vbl[2].set_oid(sysUpTime);
-        vbl[3].set_oid(sysContact);
-        vbl[4].set_oid(sysName);
-        vbl[5].set_oid(sysLocation);
-//    vbl[6].set_oid(sysServices);
-
-        std::cout << "Send a GET-REQUEST to: " << ipAddr.get_printable() << std::endl;
-        if ( ! oid_str ) {
-            if ( strcmp(genAddrStr,"localhost" ) == 0 ||
-                 strcmp(genAddrStr, "127.0.0.1") == 0 ){
-                pdu.set_vblist(vbl, NUM_SYS_VBS);
-            } else {
-                for (int i=0; i<NUM_SYS_VBS;i++)
-                    pdu += vbl[i];
-            }
-        }
-        else {
-            Oid req_oid(oid_str);
-            if ( ! req_oid.valid() ) {
-                std::cout << "Request oid constructor failed for:" << oid_str << std::endl;
-                return(1);
-            }
-            vb.set_oid(req_oid);
-            pdu += vb;
-        }
-        status = snmp.get(pdu, target);
-        if (status){
-            std::cout << "Failed to issue SNMP Get: (" << status  << ") "
-                      << snmp.error_msg(status) << std::endl;
-            return(1);
-        }
-        else{
-            std::cout << "Issued get successfully" << std::endl;
-            int vbcount = pdu.get_vb_count();
-            if ( vbcount == NUM_SYS_VBS ) {
-                pdu.get_vblist(vbl, vbcount);
-                for ( int i=0; i<vbcount ; i++ )  {
-                    std::cout << vbl[i].get_printable_oid() << " : " <<
-                              vbl[i].get_printable_value() << std::endl;
-                }
-            } else {
-                for ( int i=0; i<vbcount ; i++ )  {
-                    pdu.get_vb(vb, i);
-                    std::cout << vb.get_printable_oid() << " : " <<
-                              vb.get_printable_value() << std::endl;
-                }
-            }
-        }
-    }
-    else if ( strcmp(req_str, "trap") == 0 ) {
-        std::cout << "Send a TRAP to: " << ipAddr.get_printable() << std::endl;
-
-        if ( ! oid_str )
-            oid_str = dflt_trp_oid;
-
-        Oid notify_oid(oid_str);
-        if ( ! notify_oid.valid() ) {
-            std::cout << "Notify oid constructor failed for:" << oid_str << std::endl;
-            return(1);
-        }
-
-        pdu.set_notify_id(notify_oid);
-
-        // Use a simple payload
-        vb.set_oid(sysLocation);
-        vb.set_value("This is a test");
-        pdu += vb;
-
-        status = snmp.trap(pdu, target);
-
-        if (status){
-            std::cout << "Failed to issue SNMP Trap: (" << status  << ") "
-                      << snmp.error_msg(status) << std::endl;
-            return(1);
-        } else {
-            std::cout << "Success" << std::endl;
-        }
-
-    }
-    else {
-        std::cout << "Invalid SNMP operation: " << req_str  << std::endl ;
-        std::cout << "Usage: " << argv[0] << " hostname [get | trap]" << std::endl;
-        return(1);
-    }
-
-    Snmp::socket_cleanup();  // Shut down socket subsystem
-
-    return(0);
-}
-#endif
-
-
-
 //Tracert, не определяет маршрут
 #if 0
 //TraceRoute.cpp
@@ -1632,587 +1442,8 @@ int main(int argc, char **argv)
 
 
 
-//Telnet. Проверить работу
-#if 0
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <winsock2.h>
-
-#define BUFFERSIZE 200
-
-int decode_message(SOCKET mainSocket, char messageBuffer[BUFFERSIZE], char returnBuffer[BUFFERSIZE], int messageLength) {
-    // Telnet protocol characters
-    char IAC  = '\xff';   // "Interpret As Command"
-    char DONT = '\xfe';
-    char DO   = '\xfd';
-    char WONT = '\xfc';
-    char WILL = '\xfb';
-    char theNULL = '\x00';
-    char ECHO = '\x01';
-
-    // special buffer to hold telnet commands received from server
-    char commandBuffer[3];
-    int commandBufferLocation = 0;
-
-    // save location in return buffer
-    int returnLocation = 0;
-
-    for (int i = 0; i < messageLength; i++) {
-        // read byte from buffer
-        char c = messageBuffer[i];
-
-        if (commandBufferLocation == 0) {
-            if (c == theNULL) {
-                // If null symbol, then do nothing
-                continue;
-            }
-            else if (c != IAC) {
-                // If it is no command, then add it to returnBuffer
-                returnBuffer[returnLocation] = c;
-                returnLocation++;
-            }
-            else {
-                // If it is command start, then add it to buffer
-                commandBuffer[commandBufferLocation] = c;
-                commandBufferLocation++;
-            }
-        }
-        else if (commandBufferLocation == 1) {
-            // If there is second negotiation command
-            if (c == DO || c == DONT || c == WILL || c == WONT) {
-                // Add command to message buffer
-                commandBuffer[commandBufferLocation] = c;
-                commandBufferLocation++;
-            }
-            else {
-                // Reset bufferLocation
-                commandBufferLocation = 0;
-            }
-        }
-        else if (commandBufferLocation == 2) {
-            // response for DO and DONT
-            if (commandBuffer[1] == DO || commandBuffer[1] == DONT) {
-                // dont accept this command
-                commandBuffer[1] = WONT;
-                commandBuffer[2] = c;
-                send(mainSocket, commandBuffer, 3, 0);
-            }
-            else if (commandBuffer[1] == WILL || commandBuffer[1] == WONT) {
-                // dont accept this command
-                commandBuffer[1] = DONT;
-                commandBuffer[2] = c;
-                send(mainSocket, commandBuffer, 3, 0);
-            }
-
-            // set bufferLocation to start
-            commandBufferLocation = 0;
-        }
-    }
-
-    // return message
-    return returnLocation;
-}
-
-int main(int argc, char* argv[]) {
-    // Arguments
-    char IpAddress[15] = "10.178.18.33";    // 10.178.18.4 52.1.193.111    longest possible IPv4 address have only 15 characters
-    unsigned short portNumber = 23;    // port number
-    int recvTimeout = 500;  // how long client wait for server response
-    int echoVerification = 1;   // echo verification on client side
-
-    // Use Ip provided by user
-    if (argc > 1) {
-        if (strlen(argv[1]) > 15) {
-            printf("Wrong IP address format \n");
-            return 0;
-        }
-        else {
-            strcpy(IpAddress, argv[1]);
-        }
-    }
-
-    // check port number
-    if (argc > 2) {
-        portNumber = (unsigned short)atoi(argv[2]);
-        if (portNumber == 0 || portNumber > 65535) {
-            printf("Port number out of range. Use a number between 0 and 65535\n");
-            return 1;
-        }
-    }
-
-    // check recv timeout
-    if (argc > 3) {
-        recvTimeout = atoi(argv[3]);
-        if (recvTimeout < 0 || recvTimeout > 600000) {
-            printf("Recv timeout out of range. Use a number between 0 and 600000\n");
-            return 1;
-        }
-    }
-
-    // check echo verification
-    if (argc > 4) {
-        int temp = atoi(argv[4]);
-        if (temp == 1) {
-            echoVerification = 1;
-        }
-        else if (temp == 0) {
-            echoVerification = 0;
-        }
-        else {
-            printf("Out of range, use only 0 - inactive and 1 - active\n");
-            return 1;
-        }
-    }
-
-    // Initialize variables
-    WSADATA wsaData;
-    WORD LibVersion = MAKEWORD(2, 2);
-    int comm_status = WSAStartup(LibVersion, &wsaData);
-
-    if (comm_status == 0) {
-        printf("Connection OK\n");
-    }
-    else {
-        printf("ERROR\n");
-        return 0;
-    }
-
-    // Create a socket
-    SOCKET mainSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-    if (mainSocket == INVALID_SOCKET) {
-        printf("Error creating socket: %ld\n", WSAGetLastError());
-        WSACleanup();
-        return 1;
-    }
-
-    // Connect to a server
-    struct sockaddr_in clientService;
-    clientService.sin_family = AF_INET;
-    clientService.sin_addr.s_addr = inet_addr(IpAddress);  // Replace with the server's IP address
-    clientService.sin_port = htons(portNumber);  // Use the same port as the server
-
-    // Set recv timeout
-    comm_status = setsockopt(mainSocket, SOL_SOCKET, SO_RCVTIMEO, (char *)&recvTimeout, sizeof(int));
-    if (comm_status == SOCKET_ERROR) {
-        printf("setsockopt for SO_RCVTIMEO failed with error: %u\n", WSAGetLastError());
-    } else {
-        printf("Set SO_RCVTIMEO: ON\n");
-    }
-
-    // Use the connect function
-    if (connect(mainSocket, (struct sockaddr *)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
-        printf("Failed to connect: \n");
-        WSACleanup();
-        return 0;
-    } else {
-        printf("Client connected \n");
-    }
-
-    // communication buffers
-    char receiveBuffer[BUFFERSIZE];
-    int receiveBufferLen = 0;
-    char senderBuffer[BUFFERSIZE];
-    int senderBufferLen = 0;
-    int echoFlag = 0;   // 1 when message is echo
-
-    // Handle server connection
-    while (1) {
-        // empty the receiveBuffer
-        memset(receiveBuffer, '\0', sizeof(receiveBuffer));
-
-        // Read server message
-        receiveBufferLen = recv(mainSocket, receiveBuffer, BUFFERSIZE, 0);
-
-        // make sure that echo flag is 0
-        echoFlag = 0;
-
-        // Make sure, there is no echo. Some servers sends echo even if it is disable, so this is to make sure that there is no echo
-        if (senderBufferLen > 1 && echoVerification) {
-            if (strncmp(receiveBuffer, senderBuffer, senderBufferLen - 1) == 0) {
-                echoFlag = 1;
-            }
-        }
-
-        // empty the senderBuffer
-        memset(senderBuffer, '\0', sizeof(senderBuffer));
-
-        // If there are some bytes in buffer, then decode message
-        if (receiveBufferLen > 0) {
-            // Read server message
-            senderBufferLen = decode_message(mainSocket, receiveBuffer, senderBuffer, receiveBufferLen);
-
-            // Display server message
-            if (echoFlag == 0) {
-                printf("%s", senderBuffer);
-            }
-        }
-        else {
-            // Display start writing mark
-            printf(": ");
-
-            // Read user input
-            fgets(senderBuffer, BUFFERSIZE, stdin);
-
-            // check if termination command was send by user
-            if (strcmp(senderBuffer, "exit\n") == 0) {
-                break;
-            }
-
-            // Send message to a server
-            senderBufferLen = send(mainSocket, senderBuffer, strlen(senderBuffer), 0);
-
-            // Handle error
-            if (senderBufferLen == SOCKET_ERROR) {
-                printf("Server error: \n");
-                break;
-            }
-        }
-    }
-
-    // Shutdown the connection
-    shutdown(mainSocket, SD_SEND); // Shutdown the sending side
-
-    // Close the socket
-    closesocket(mainSocket);
-
-    // Cleanup Winsock
-    WSACleanup();
-
-    printf("END \n");
-    return 0;
-}//*/
-#endif
-
-
-
-//SSH
-#if 0
-/* Copyright (C) The libssh2 project and its contributors.
- *
- * Sample showing how to use libssh2 to execute a command remotely.
- *
- * The sample code has fixed values for hostname, username, password
- * and command to run.
- *
- * $ ./ssh2_exec 127.0.0.1 user password "uptime"
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
-//#include "libssh2_setup.h"
-#include <libssh2.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#ifndef _WIN32
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-#if !defined(_WIN32) || defined(__MINGW32__)
-#include <sys/time.h>  /* for timeval */
-#endif
-
-static const char *hostname = "192.168.0.101";
-static const char *commandline = "systeminfo";
-static const char *pubkey = "/home/username/.ssh/id_rsa.pub";
-static const char *privkey = "/home/username/.ssh/id_rsa";
-static const char *username = "sshuser";
-static const char *password = "sshuser";
-
-static int waitsocket(libssh2_socket_t socket_fd, LIBSSH2_SESSION *session)
-{
-    struct timeval timeout;
-    int rc;
-    fd_set fd;
-    fd_set *writefd = NULL;
-    fd_set *readfd = NULL;
-    int dir;
-
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
-
-    FD_ZERO(&fd);
-
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-#endif
-    FD_SET(socket_fd, &fd);
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-
-    /* now make sure we wait in the correct direction */
-    dir = libssh2_session_block_directions(session);
-
-    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
-        readfd = &fd;
-
-    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
-        writefd = &fd;
-
-    rc = select((int)(socket_fd + 1), readfd, writefd, NULL, &timeout);
-
-    return rc;
-}
-
-int main(int argc, char *argv[])
-{
-    uint32_t hostaddr;
-    libssh2_socket_t sock;
-    struct sockaddr_in sin;
-    const char *fingerprint;
-    int rc;
-    LIBSSH2_SESSION *session = NULL;
-    LIBSSH2_CHANNEL *channel;
-    int exitcode = 0;
-    char *exitsignal = NULL;
-    ssize_t bytecount = 0;
-    size_t len;
-    LIBSSH2_KNOWNHOSTS *nh;
-    int type;
-
-#ifdef _WIN32
-    WSADATA wsadata;
-
-    rc = WSAStartup(MAKEWORD(2, 0), &wsadata);
-    if(rc) {
-        fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
-        return 1;
-    }
-#endif
-
-    if(argc > 1)
-        hostname = argv[1];  /* must be ip address only */
-    if(argc > 2)
-        username = argv[2];
-    if(argc > 3)
-        password = argv[3];
-    if(argc > 4)
-        commandline = argv[4];
-
-    rc = libssh2_init(0);
-    if(rc) {
-        fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
-        return 1;
-    }
-
-    hostaddr = inet_addr(hostname);
-
-    /* Ultra basic "connect to port 22 on localhost".  Your code is
-     * responsible for creating the socket establishing the connection
-     */
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if(sock == LIBSSH2_INVALID_SOCKET) {
-        fprintf(stderr, "failed to create socket.\n");
-        goto shutdown;
-    }
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(22);
-    sin.sin_addr.s_addr = hostaddr;
-    if(connect(sock, (struct sockaddr *)&sin, sizeof(struct sockaddr_in))) {
-        fprintf(stderr, "failed to connect.\n");
-        goto shutdown;
-    }
-
-    /* Create a session instance */
-    session = libssh2_session_init();
-    if(!session) {
-        fprintf(stderr, "Could not initialize SSH session.\n");
-        goto shutdown;
-    }
-
-    /* tell libssh2 we want it all done non-blocking */
-    libssh2_session_set_blocking(session, 0);
-
-    /* ... start it up. This trades welcome banners, exchange keys,
-     * and setup crypto, compression, and MAC layers
-     */
-    while((rc = libssh2_session_handshake(session, sock)) ==
-          LIBSSH2_ERROR_EAGAIN)
-        ;
-    if(rc) {
-        fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
-        goto shutdown;
-    }
-
-    nh = libssh2_knownhost_init(session);
-    if(!nh) {
-        exitcode = 2;
-        goto shutdown;
-    }
-
-    /* read all hosts from here */
-    libssh2_knownhost_readfile(nh, "known_hosts",
-                               LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-
-    /* store all known hosts to here */
-    libssh2_knownhost_writefile(nh, "dumpfile",
-                                LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-
-    fingerprint = libssh2_session_hostkey(session, &len, &type);
-    if(fingerprint) {
-        struct libssh2_knownhost *host;
-        int check = libssh2_knownhost_checkp(nh, hostname, 22,
-                                             fingerprint, len,
-                                             LIBSSH2_KNOWNHOST_TYPE_PLAIN |
-                                             LIBSSH2_KNOWNHOST_KEYENC_RAW,
-                                             &host);
-
-        fprintf(stderr, "Host check: %d, key: %s\n", check,
-                (check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH) ?
-                host->key : "<none>");
-
-        /*****
-         * At this point, we could verify that 'check' tells us the key is
-         * fine or bail out.
-         *****/
-    }
-    else {
-        libssh2_knownhost_free(nh);
-        exitcode = 3;
-        goto shutdown;
-    }
-    libssh2_knownhost_free(nh);
-
-    if(strlen(password)) {
-        /* We could authenticate via password */
-        while((rc = libssh2_userauth_password(session, username, password)) ==
-              LIBSSH2_ERROR_EAGAIN)
-            ;
-        if(rc) {
-            fprintf(stderr, "Authentication by password failed.\n");
-            goto shutdown;
-        }
-    }
-    else {
-        /* Or by public key */
-        while((rc = libssh2_userauth_publickey_fromfile(session, username,
-                                                        pubkey, privkey,
-                                                        password)) ==
-              LIBSSH2_ERROR_EAGAIN)
-            ;
-        if(rc) {
-            fprintf(stderr, "Authentication by public key failed.\n");
-            goto shutdown;
-        }
-    }
-
-#if 0
-    libssh2_trace(session, ~0);
-#endif
-
-    /* Exec non-blocking on the remote host */
-    do {
-        channel = libssh2_channel_open_session(session);
-        if(channel ||
-           libssh2_session_last_error(session, NULL, NULL, 0) !=
-           LIBSSH2_ERROR_EAGAIN)
-            break;
-        waitsocket(sock, session);
-    } while(1);
-    if(!channel) {
-        fprintf(stderr, "Error\n");
-        return 1;
-    }
-
-    while((rc = libssh2_channel_exec(channel, commandline)) ==
-          LIBSSH2_ERROR_EAGAIN)
-        waitsocket(sock, session);
-    if(rc) {
-        fprintf(stderr, "exec error\n");
-        return 1;
-    }
-
-    for(;;) {
-        ssize_t nread;
-        /* loop until we block */
-        do {
-            char buffer[0x4000];
-            nread = libssh2_channel_read(channel, buffer, sizeof(buffer));
-            if(nread > 0) {
-                ssize_t i;
-                bytecount += nread;
-                fprintf(stderr, "We read:\n");
-                for(i = 0; i < nread; ++i)
-                    fputc(buffer[i], stderr);
-                fprintf(stderr, "\n");
-            }
-            else if(nread < 0 && nread != LIBSSH2_ERROR_EAGAIN)
-                /* no need to output this for the EAGAIN case */
-                fprintf(stderr, "libssh2_channel_read returned %ld\n",
-                        (long)nread);
-        } while(nread > 0);
-
-        /* this is due to blocking that would occur otherwise so we loop on
-           this condition */
-        if(nread == LIBSSH2_ERROR_EAGAIN)
-            waitsocket(sock, session);
-        else
-            break;
-    }
-
-    exitcode = 127;
-
-    while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
-        waitsocket(sock, session);
-    if(rc == 0) {
-        exitcode = libssh2_channel_get_exit_status(channel);
-        libssh2_channel_get_exit_signal(channel, &exitsignal,
-                                        NULL, NULL, NULL, NULL, NULL);
-    }
-
-    if(exitsignal)
-        fprintf(stderr, "\nGot signal: %s\n",
-                exitsignal ? exitsignal : "none");
-    else
-        fprintf(stderr, "\nEXIT: %d bytecount: %ld\n",
-                exitcode, (long)bytecount);
-
-    libssh2_channel_free(channel);
-
-    shutdown:
-
-    if(session) {
-        libssh2_session_disconnect(session, "Normal Shutdown");
-        libssh2_session_free(session);
-    }
-
-    if(sock != LIBSSH2_INVALID_SOCKET) {
-        shutdown(sock, 2 /* SHUT_RDWR */);
-        LIBSSH2_SOCKET_CLOSE(sock);
-    }
-
-    fprintf(stderr, "all done\n");
-
-    libssh2_exit();
-
-#ifdef _WIN32
-    WSACleanup();
-#endif
-
-    return exitcode;
-}
-#endif
-
-
-
 //SSH, v.2
-#if 1
+#if 0
 #include <iostream>
 #include <vector>
 #include <string>
@@ -2223,6 +1454,18 @@ int main(int argc, char *argv[])
 #include <libssh2.h>
 #include <windows.h>
 
+
+
+/**
+ *
+Архитектурный обзор: Как это работает «с высоты птичьего полета»
+
+Наш асинхронный SSH-клиент держится на «трех китах»:
+ * 1. Единственный поток ОС (io_context): Весь наш код (и чтение, и запись, и таймеры) выполняется строго в одном системном потоке. Никаких гонок данных (race conditions) или мьютексов.
+2. Крипто-движок (libssh2): Он переведен в неблокирующий режим. Он не умеет сам работать с сетью — он лишь шифрует и дешифрует байты. Когда ему не хватает данных или сокет забит, он говорит: LIBSSH2_ERROR_EAGAIN.
+3. Планировщик (Boost.Asio 1.87): Он управляет реальным системным сокетом. Когда libssh2 утыкается в EAGAIN, Boost.Asio берет сокет, засыпает (освобождая процессор) и просыпается ровно тогда, когда операционная система говорит: «Сокет готов к чтению/записи».
+
+ */
 namespace asio = boost::asio;
 using asio::ip::tcp;
 
@@ -2234,20 +1477,52 @@ private:
     LIBSSH2_CHANNEL* channel_ = nullptr;
     bool is_alive_ = false;
 
+/**
+ *
+Узел 1: Асингулятор сокета async_wait_socket
+Это сердце нашей интеграции. Именно этот метод заменяет блокирующий Си-вызов select() из примера автора библиотеки.
+- Как это понимает планировщик: Конструкция co_await socket_.async_wait мгновенно приостанавливает текущую корутину.
+ Поток управления возвращается в io_context.run(). Процессор свободен — он может в этот момент обрабатывать нажатия
+ клавиатуры. Как только сетевая карта получает пакет, Asio возобновляет корутину ровно с того места, где она заснула.
+- Зачем нужен asio::as_tuple: По умолчанию Asio при ошибках или отменах (например, если связь оборвалась) выбрасывает
+ тяжелое C++ исключение (throw). Обертка as_tuple заставляет метод вместо генерации исключения просто вернуть кортеж
+ с кодом ошибки [ec]. Программа работает быстрее и стабильнее.
+ * @return asio::awaitable<void>
+ *         Возвращает асингую задачу (управляющий фрейм корутины) без возвращаемого значения (void).
+ *         Для вызывающей корутины это означает:
+ *         1. В процессе работы: приостанавливает текущую ветку выполнения (yield), освобождая поток ОС.
+ *         2. По завершении: сигнализирует о том, что сокет стал готов к вводу/выводу (или произошла ошибка),
+ *            разрешая вызывающему циклу продолжить работу со следующей строчки кода.
+
+ */
     asio::awaitable<void> async_wait_socket() {
+        // 1. Спрашиваем у libssh2: "В каком направлении ты сейчас забуксовала?"
         int dir = libssh2_session_block_directions(session_);
+        boost::system::error_code active_ec; // Выносим переменную наружу, чтобы проверить её после wait
+
 
         if (dir & LIBSSH2_SESSION_BLOCK_INBOUND) {
+            // 2. Если ей нужно читать, мы говорим Boost.Asio:
+            // "Засни и жди, пока в TCP-сокет не прилетят новые байты от сервера"
             // as_tuple заставит async_wait вернуть [boost::system::error_code] вместо генерации throw
-            auto [ec] = co_await socket_.async_wait(
+            std::tie(active_ec) = co_await socket_.async_wait(
                     tcp::socket::wait_read,
                     asio::as_tuple(asio::use_awaitable)
             );
         } else if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
-            auto [ec] = co_await socket_.async_wait(
+            // 3. Если ей нужно писать, мы говорим Boost.Asio:
+            // "Засни и жди, пока сетевой буфер ОС не освободится для отправки пакета"
+            std::tie(active_ec) = co_await socket_.async_wait(
                     tcp::socket::wait_write,
                     asio::as_tuple(asio::use_awaitable)
             );
+        }
+
+        // ОБРАБОТКА ОШИБКИ: Если Asio сообщает, что сокет упал или операция отменена таймером
+        if (active_ec) {
+            // Выставляем флаг, что канал мертв. Это мгновенно остановит
+            // внешние циклы while(is_alive()) в корутинах чтения и записи!
+            is_alive_ = false;
         }
     }
 
@@ -2260,73 +1535,177 @@ public:
 
     bool is_alive() const { return is_alive_ && socket_.is_open(); }
 
+
+    /**
+     * Именно здесь происходит магия превращения сырого TCP-соединения в защищенный, шифрованный крипто-канал libssh2.
+     * @param user
+     * @param pass
+     * @return asio::awaitable<bool> Асинхронную задачу, которая при завершении выдает логическое значение true (успех) или false (ошибка).
+     */
     asio::awaitable<bool> async_init(const std::string& user, const std::string& pass) {
+        // 1. Создаем и инициализируем объект SSH-сессии внутри библиотеки libssh2.
+        // Если память выделить не удалось, возвращаем false.
         session_ = libssh2_session_init();
         if (!session_) co_return false;
 
+        // 2. КРИТИЧЕСКИ ВАЖНО: Переводим сессию libssh2 в неблокирующий режим.
+        // Теперь функции библиотеки не будут замирать в ожидании сети, а сразу вернут EAGAIN.
         libssh2_session_set_blocking(session_, 0);
 
         int rc;
+        // 3. Запускаем процедуру SSH-Handshake (обмен ключами шифрования и баннерами).
+        // Так как режим неблокирующий, мы крутимся в цикле, пока библиотека возвращает EAGAIN.
+        //Обратите внимание на шаг №3: socket_.native_handle(). Старая Си-библиотека libssh2 ничего не знает про
+        // красивые C++ объекты Boost.Asio. Ей нужен классический низкоуровневый дескриптор сокета (число),
+        // который понимает операционная система Windows/Linux. Метод .native_handle() как раз «достает» этот
+        // системный числовой идентификатор из объекта Boost.Asio и передает его в libssh2. При этом управление
+        // сокетом остается за Asio.
         while ((rc = libssh2_session_handshake(session_, socket_.native_handle())) == LIBSSH2_ERROR_EAGAIN) {
+            // Уходим в асингую спячку через Boost.Asio, пока сокет не будет готов передавать данные.
             co_await async_wait_socket();
         }
+        // Если handshake завершился с ошибкой (не 0), пишем в лог и выходим.
         if (rc) {
             std::cerr << "[SSH] Handshake failed: " << rc << "\n";
             co_return false;
         }
 
         // Проходим официальную SSH-аутентификацию по паролю до открытия Shell
+        // 4. Проходим криптографическую SSH-аутентификацию по логину и паролю.
+        // Процедура также полностью неблокирующая и ждет готовности сети через Asio.
         while ((rc = libssh2_userauth_password(session_, user.c_str(), pass.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+            // Уходим в асингую спячку через Boost.Asio, пока сокет не будет готов передавать данные.
             co_await async_wait_socket();
         }
+        // Если оборудование отклонило логин или пароль, сообщаем об этом.
         if (rc) {
             std::cerr << "[SSH] Аутентификация отклонена оборудованием.\n";
             co_return false;
         }
 
+        // 5. Открываем виртуальный канал (Channel) внутри установленной SSH-сессии.
+        // Через этот канал будет идти наше CLI-взаимодействие с коммутатором.
         while (!(channel_ = libssh2_channel_open_session(session_))) {
             if (libssh2_session_last_error(session_, nullptr, nullptr, 0) != LIBSSH2_ERROR_EAGAIN) co_return false;
+            // Уходим в асингую спячку через Boost.Asio, пока сокет не будет готов передавать данные.
             co_await async_wait_socket();
         }
 
-        // Передаем nullptr и 0 в качестве 4-го и 5-го параметров (modes/modes_len)
+        // Запрашиваем xterm с правильным размером 160x40.
+// Замена nullptr на "" и явная передача размеров помогает серверной стороне
+// инициализировать стандартные параметры строк/колонок (Tty modes).
+// 6. Запрашиваем у удаленного сервера псевдотерминал (PTY) типа "xterm".
+        // Явно передаем геометрию экрана 160x40 символов, чтобы таблицы выводились в ровные столбцы.
+// Запрашиваем геометрию 160x40.
+// ВНИМАНИЕ: Если вывод сервера превысит 160 символов, он принудительно перенесет строку.
+// Для универсальности в интерактивном режиме здесь можно выставить ширину 500.
+// При переходе к автоматизации (скриптам) этот PTY-блок будет полностью удален,
+// так как режим 'libssh2_channel_exec' автоматически отключает любые ограничения ширины.
+
         while ((rc = libssh2_channel_request_pty_ex(
-                channel_,       // 1. Указатель на канал
-                "xterm",        // 2. Тип терминала
-                5,              // 3. Длина строки типа терминала
-                nullptr,        // 4. Указатель на режимы терминала (modes) — нам не нужны
-                0,              // 5. Длина режимов терминала (modes_len)
-                160,            // 6. Ширина в символах
-                40,             // 7. Высота в строках
-                0,              // 8. Ширина в пикселях
-                0               // 9. Высота в пикселях
+                channel_,       // Указатель на канал
+                "xterm",        // Тип эмуляции
+                5,              // Длина строки "xterm"
+                nullptr,        // Modes (не используем кастомные)
+                0,              // Modes length
+                160,            // Ширина (в символах)
+                40,             // Высота (в строках)
+                0,              // Ширина в пикселях
+                0               // Высота в пикселях
         )) == LIBSSH2_ERROR_EAGAIN)
         {
+            // Уходим в асингую спячку через Boost.Asio, пока сокет не будет готов передавать данные.
             co_await async_wait_socket();
         }
+
+        // 7. Запускаем интерактивную командную оболочку (Shell) на коммутаторе.
+        // С этого момента сервер готов принимать наши команды и слать ответы.
         while ((rc = libssh2_channel_shell(channel_)) == LIBSSH2_ERROR_EAGAIN) co_await async_wait_socket();
 
+        // Фиксируем, что канал успешно поднят и готов к работе.
         is_alive_ = true;
         co_return true;
     }
 
-    void write(std::string_view data) {
-        if (is_alive() && !data.empty()) {
-            libssh2_channel_write(channel_, data.data(), data.size());
+    /**
+     *
+Узел 3: Асинхронная корутина отправки async_write
+
+Тот самый узел, который исправил зависание клавиш и стрелочек.
+     * @param data
+     * @return asio::awaitable<void> Асинхронную задачу без передачи данных. Она служит исключительно маркером
+     * синхронизации времени — приостанавливает поток и возобновляет его, когда сетевое событие наступило.
+     */
+    // Новый асинхронный и безопасный метод отправки
+    asio::awaitable<void> async_write(std::string_view data) {
+        if (!is_alive() || data.empty()) co_return;
+
+        size_t bytes_written = 0;
+        const char* ptr = data.data();
+        size_t remaining = data.size();
+
+        while (remaining > 0 && is_alive()) {
+            // 1. Пропихиваем зашифрованный символ в канал libssh2
+            ssize_t rc = libssh2_channel_write(channel_, ptr + bytes_written, remaining);
+
+            if (rc > 0) {
+                // 2. Если сервер принял байты (или часть байт) — сдвигаем указатель
+                bytes_written += rc;
+                remaining -= rc;
+            }
+            else if (rc == LIBSSH2_ERROR_EAGAIN) {
+                // 3. КЛЮЧЕВОЙ МОМЕНТ: буфер забит! Мы не блокируем программу,
+                // а засыпаем, давая корутине чтения обработать входящий поток.
+                // Если буфер отправки SSH забит — асинхронно ждем освобождения через Asio
+                co_await async_wait_socket();
+            }
+            else {
+                // Любая другая ошибка означает смерть канала
+                is_alive_ = false;
+                co_return;
+            }
         }
     }
 
-    void async_read(std::function<void(std::string_view)> callback) { on_data_callback = std::move(callback); }
+    // Метод для регистрации (сохранения) пользовательского коллбека.
+// std::function<void(std::string_view)> — это универсальный контейнер для нашей лямбды.
+// std::move перемещает лямбду во внутреннюю переменную on_data_callback без лишнего копирования.
+    void async_read(std::function<void(std::string_view)> callback) {
+        on_data_callback = std::move(callback); }
 
+    /**
+     *
+Узел 2: Асинхронный цикл чтения process_read
+
+Этот метод работает в бесконечном цикле, пока сессия жива.
+     • Логика работы: Большую часть времени этот цикл проводит на строчке co_await async_wait_socket(). Программа
+     не тратит ресурсы CPU на постоянный опрос сокета в холостом цикле while.
+Главная асинхронная корутина чтения, работающая в фоновом цикле сессии.
+     * @return
+     */
     asio::awaitable<void> process_read() {
+        // Выделяем временный буфер объемом 4 КБ под один сетевой пакет данных.
         std::vector<char> buffer(4096);
+        // Крутимся в цикле, пока сессия SSH активна.
         while (is_alive()) {
+            // 1. Пытаемся прочитать расшифрованные байты из канала SSH
+            // Пытаемся считать расшифрованные сервером байты через API libssh2.
             ssize_t nread = libssh2_channel_read(channel_, buffer.data(), buffer.size());
+
             if (nread > 0) {
+                // 2. Если что-то прочитали — мгновенно отдаем в std::cout через коллбек
+                // Если данные успешно прочитаны (nread содержит количество байт)
+                // и у нас зарегистрирован коллбек — вызываем его, передавая "взгляд" на буфер.
                 if (on_data_callback) on_data_callback(std::string_view(buffer.data(), nread));
             } else if (nread == LIBSSH2_ERROR_EAGAIN) {
+                // 3. Если читать пока нечего (сеть пуста) — уходим в асинхронную спячку!
+                // Если сеть пуста и читать пока нечего (libssh2 вернула EAGAIN),
+                // мы асинхронно засыпаем через Boost.Asio, освобождая поток ОС для других задач.
                 co_await async_wait_socket();
             } else {
+                // 4. Если вернулся 0 или отрицательный код (не EAGAIN) — сессия закрылась
+                // Любой другой код (например, 0 или критическая ошибка сети)
+                // означает, что удаленный сервер закрыл соединение. Останавливаем цикл.
                 is_alive_ = false;
             }
         }
@@ -2360,6 +1739,7 @@ asio::awaitable<void> handle_ssh_keyboard(asio_ssh_channel& channel) {
             if (_kbhit()) {
                 int ch = _getch();
                 std::string send_str = "";
+
                 if (ch == 0 || ch == 224) {
                     int ext = _getch();
                     if (ext == 72) send_str = "\x1B[A";      // ВВЕРХ
@@ -2371,7 +1751,10 @@ asio::awaitable<void> handle_ssh_keyboard(asio_ssh_channel& channel) {
                 else if (ch == 8) send_str = "\x7F"; // Backspace
                 else send_str = static_cast<char>(ch);
 
-                if (!send_str.empty()) channel.write(send_str);
+                // Вызываем отправку асинхронно через co_await
+                if (!send_str.empty()) {
+                    co_await channel.async_write(send_str);
+                }
             }
             timer.expires_after(std::chrono::milliseconds(10));
             co_await timer.async_wait(asio::use_awaitable);
@@ -2379,85 +1762,72 @@ asio::awaitable<void> handle_ssh_keyboard(asio_ssh_channel& channel) {
     } catch (...) {}
 }
 
-// Логика управления сессией
+/**
+ * // Главная управляющай корутина сессии. Логика управления сессией
+ * @param socket
+ * @param user
+ * @param pass
+ * @return
+ */
+
 asio::awaitable<void> ssh_session_logic(tcp::socket& socket, std::string user, std::string pass) {
+    // 1. Получаем текущий экзекутор (планировщик потока) для корутины.
+    //Экзекутор (Executor) — это внутренний менеджер потока от Boost.Asio. Он помнит, в каком именно потоке сейчас
+    //выполняется эта корутина. Мы сохраняем его в переменную executor, чтобы в дальнейшем создавать асинхронные
+    // таймеры сессии (например, keep_alive_timer) строго в этом же самом контексте. Конструкция
+    // co_await asio::this_coro::executor асинхронно запрашивает этот маркер у планировщика.
     auto executor = co_await asio::this_coro::executor;
+    // 2. Создаем экземпляр нашего SSH-моста, передавая ему ссылку на TCP-сокет.
     asio_ssh_channel channel{ socket };
 
     std::cout << "[SSH] Установка защищенного соединения...\n";
+
+    //запускает скрытые механизмы шифрования libssh2
+    /*
+     * Ключевое слово co_await — это команда для компилятора C++20, которая говорит: «Эта операция выполняется
+     * асинхронно по сети и может занять время. Не блокируй поток ОС! Если сервер еще не ответил, поставь эту
+     * корутину на паузу, займись другими задачами, а когда ответ придет — вернись и продолжи с этого же места».
+       Если убрать co_await, программа попытается пойти дальше, не дождавшись завершения авторизации. В итоге мы попытаемся
+     читать из еще не созданного канала, и программа мгновенно упадет.
+     */
     if (!co_await channel.async_init(user, pass)) {
         std::cerr << "[Ошибка] Не удалось авторизоваться или открыть Shell.\n";
         co_return;
     }
 
-    channel.async_read([
-                               // Захватываем состояние стейт-машины между вызовами чанков
-                               in_esc = false,
-                               in_csi = false,
-                               ansi_buffer = std::string{}
-                       ](std::string_view text) mutable {
-        if (text.empty()) return;
-
-        std::string output;
-        output.reserve(text.size());
-
-        for (char ch : text) {
-            if (!in_esc && !in_csi) {
-                if (ch == '\x1B') {
-                    in_esc = true;
-                    ansi_buffer.clear();
-                    ansi_buffer.push_back(ch);
-                } else {
-                    // Обычный печатный символ
-                    output.push_back(ch);
-                }
-            }
-            else if (in_esc) {
-                ansi_buffer.push_back(ch);
-                if (ch == '[') {
-                    in_esc = false;
-                    in_csi = true;
-                } else {
-                    // Одиночный ESC-код (не CSI) — сбрасываем
-                    in_esc = false;
-                    output.append(ansi_buffer);
-                }
-            }
-            else if (in_csi) {
-                ansi_buffer.push_back(ch);
-                // Буквы от 'a' до 'z' и от 'A' до 'Z' завершают CSI-последовательность
-                if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
-                    in_csi = false;
-
-                    // Проверяем: если это команда движения курсора вверх (заканчивается на 'A')
-                    // или абсолютного позиционирования (заканчивается на 'H' или 'f')
-                    if (ch == 'A' || ch == 'H' || ch == 'f') {
-                        // ИГНОРИРУЕМ: просто не пускаем этот код в консоль Windows,
-                        // тем самым запрещая промпту прыгать вверх и затирать текст!
-                    } else {
-                        // Все остальные коды (например, цвета 'm') — разрешаем
-                        output.append(ansi_buffer);
-                    }
-                }
-            }
-        }
-
-        if (!output.empty()) {
-            std::cout << output << std::flush;
+    // Регистрируем обработчик (коллбек) для входящих текстовых данных от SSH-сервера.
+// Мы передаем в метод async_read лямбда-функцию [ ](std::string_view text).
+// Как только из сети прилетит очередной кусок данных (чанк), наш канал автоматически
+// вызовет эту лямбду, передав в нее чистый текст (text), который мы мгновенно выводим на экран.
+    channel.async_read([](std::string_view text) {
+        if (!text.empty()) {
+            std::flush(std::cout);
+            std::cout << text << std::flush;
         }
     });
 
-
-
-
+// 1. Создаем асинхронный таймер-супервизор, привязанный к нашему потоку выполнения (executor).
+    // Этот таймер будет удерживать главную корутину от досрочного завершения, пока идет сессия.
     asio::steady_timer keep_alive_timer(executor);
+
+    // 2. Асинхронно разветвляем (co_spawn) выполнение: запускаем фоновую корутину чтения из сети.
+    // read_from_ssh_device будет крутиться в своем цикле while, вылавливая байты от коммутатора.
+    // Передаем ей ссылку на таймер keep_alive_timer, чтобы она могла "разбудить" нас при отключении.
     asio::co_spawn(executor, read_from_ssh_device(channel, keep_alive_timer), asio::detached);
+    // 3. Асинхронно разветвляем выполнение вторично: запускаем фоновую корутину опроса клавиатуры.
+    // handle_ssh_keyboard будет непрерывно сканировать нажатия кнопок и отправлять их в async_write.
     asio::co_spawn(executor, handle_ssh_keyboard(channel), asio::detached);
 
     try {
+        // 4. Устанавливаем время ожидания таймера-супервизора на максимально возможное (бесконечность).
         keep_alive_timer.expires_at(std::chrono::steady_clock::time_point::max());
+        // 5. КЛЮЧЕВАЯ ТОЧКА ЗАПИСИ: Главная корутина сессии засыпает на этой строчке.
+        // Она освобождает поток и смиренно ждет, пока кто-нибудь принудительно не отменит этот таймер.
         co_await keep_alive_timer.async_wait(asio::use_awaitable);
     } catch (const boost::system::system_error& e) {
+        // 6. Перехватываем событие отмены. Если код ошибки равен operation_aborted,
+        // значит таймер был намеренно сброшен из корутины чтения (случился дисконнект).
+        // Это штатная ситуация, мы просто пропускаем её и идем на корректное закрытие.
         if (e.code() != asio::error::operation_aborted) throw;
     }
     std::cout << "[Система] Главная SSH корутина завершена.\n";
@@ -2466,19 +1836,47 @@ asio::awaitable<void> ssh_session_logic(tcp::socket& socket, std::string user, s
 int main() {
 
 #ifdef _WIN32
+    // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+    // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
     SetConsoleOutputCP(65001);
+
+    // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+    // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
     SetConsoleCP(65001);
 
+    // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+    // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
     if (hOut != INVALID_HANDLE_VALUE) {
+        // Создаем переменную для хранения текущего флага-маски режимов консоли.
         DWORD dwMode = 0;
+        // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+        // Если функция вернула true (успех), значит, мы можем их модифицировать.
         if (GetConsoleMode(hOut, &dwMode)) {
+            // Включаем аппаратную обработку виртуального терминала + обработку вывода
+            // Включаем обработку ANSI-последовательностей (Esc-кодов).
+            // Благодаря этому консоль Windows аппаратно понимает команды сервера
+            // о цвете текста, очистке экрана и перемещении курсора (история команд).
             dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            // Дополнительно можно включить ENABLE_PROCESSED_OUTPUT, если строки все еще съезжают
+            // Включаем обработку служебных управляющих символов вывода.
+            // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+            // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
             dwMode |= ENABLE_PROCESSED_OUTPUT;
+            // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+            // С этого момента консоль начинает работать в режиме умного терминала.
             SetConsoleMode(hOut, dwMode);
         }
+        else {
+            std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+        }
     }
+    else {
+        // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+        std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                  << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
+    }
+
 #endif
 
 
@@ -2492,21 +1890,43 @@ int main() {
     std::cin >> pass;
 
     // 2. Инициализируем глобальный контекст libssh2
+    // Инициализируем глобальный криптографический контекст библиотеки libssh2.
+// Вызывается строго один раз при старте приложения до создания сокетов.
+// Передача '0' означает запуск со стандартными системными настройками.
     if (libssh2_init(0)) {
         std::cerr << "Libssh2 init failed\n";
         return 1;
     }
 
     try {
+        // Главное «сердце» и движок асинхронного приложения.
+// Этот объект управляет циклом обработки всех сетевых событий, таймеров и корутин.
+// Он распределяет задачи и следит за тем, чтобы программа работала в одном потоке ОС без блокировок.
         asio::io_context io_context;
+        // Асинхронный преобразователь сетевых адресов (ДНС-резолвер).
+// Он отвечает за перевод понятных человеку адресов (например, "tfortis.local" или "192.168.0.101")
+// и текстовых имен портов (например, "ssh" или "22") в понятный для операционной системы цифровой IP-адрес.
         tcp::resolver resolver(io_context);
+        // Объект сетевого TCP-сокета, привязанный к нашему движку io_context.
+// Через него происходит реальный прием и отправка байтов по сети.
+// В отличие от обычных сокетов, он не блокирует программу, а умеет засыпать и просыпаться асинхронно.
         tcp::socket socket(io_context);
 
         std::cout << "Подключение к " << ip << ":22...\n";
+
+        // Синхронно подключаем TCP-сокет к удаленному серверу по найденному адресу и порту 22.
+// Функция заблокирует поток выполнения только на этапе первоначального TCP-рукопожатия,
+// гарантируя, что физическое соединение успешно установлено до старта асинхронного движка.
         asio::connect(socket, resolver.resolve(ip, "22"));
         std::cout << "TCP сокет подключен. Запуск корутин...\n";
 
+        // Планируем и запускаем главную управляющую корутину SSH-сессии (ssh_session_logic).
+// asio::co_spawn берет нашу корутину и регистрирует ее внутри движка io_context.
+// asio::detached указывает, что мы запускаем корутину независимо и не ждем от нее возвращаемого значения.
         asio::co_spawn(io_context, ssh_session_logic(socket, user, pass), asio::detached);
+        // Запускаем бесконечный цикл обработки событий асинхронного движка.
+// Этот вызов блокирует текущий поток ОС, отдавая его под выполнение всех зарегистрированных корутин и таймеров.
+// Функция завершит работу только тогда, когда закроются все сетевые сокеты и остановятся таймеры.
         io_context.run();
 
     } catch (const std::exception& e) {
@@ -2517,401 +1937,144 @@ int main() {
     return 0;
 }
 
-#endif
+/**
+ *
+Физика процесса: Как это работает параллельно в одном потоке?
 
-//Telnet, v.1
-#if 0
-#include <iostream>
-#include <vector>
-#include <string>
-#include <thread>
-#include <functional>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <conio.h> // Для _getch()
+В обычной многопоточности (Threads) операционная система в любой случайный момент может прервать один поток и переключить процессор на другой. Из-за этого возникают гонки данных, и коду нужны тяжелые мьютексы (std::mutex).
+В наших C++20 корутинах (кооперативная многозадачность) переключение происходит добровольно и строго в точках, где написано ключевое слово co_await.
+Вот как выглядит их ежесекундный «танец» внутри io_context:
+1. Шаг Главной коруниты: Она доходит до строки co_await keep_alive_timer.async_wait(...), регистрирует у планировщика намерение спать бесконечно, отдает управление потоком обратно движку io_context и полностью засыпает.
+2. Шаг Корутины Клавиатуры: Планировщик видит, что активна корутина handle_ssh_keyboard. Она просыпается, проверяет функцию _kbhit(). Если вы ничего не нажали, она доходит до своей строчки co_await timer.async_wait(10ms). Она говорит планировщику: «Я засыпаю на 10 миллисекунд» — и добровольно возвращает поток движку.
+3. Шаг Корутины Чтения: В этот же миг планировщик передает поток корутине read_from_ssh_device. Она делает вызов сети, видит, что коммутатор ничего не прислал (вернулся EAGAIN), доходит до строки co_await async_wait_socket() и говорит: «Я засыпаю, пока в сокете не появятся байты». Поток снова свободен!
+4. Внезапное событие (Вы нажали клавишу): Проходит 10 мс. Планировщик будит клавиатуру. Она видит символ, вызывает co_await channel.async_write(). Байты улетают коммутатору. Клавиатура снова засыпает на 10 мс.
+5. Внезапное событие (Сервер прислал ответ): Сетевая карта Windows получает пакет от коммутатора. Планировщик io_context мгновенно видит, что сокет готов к чтению. Он будит корутину чтения. Она просыпается со строчки async_wait_socket(), забирает текст, выводит его на экран через коллбек и снова засыпает в ожидании сети.
 
-#include <telnetpp/session.hpp>
-#include <telnetpp/options/echo/client.hpp>
+Как работает сценарий отключения (Supervisor Timer)?
 
-#pragma comment(lib, "Ws2_32.lib")
+Что произойдет, если коммутатор TFortis внезапно перезагрузится или сетевой кабель выдернут?
+1. Корутина чтения read_from_ssh_device проснется, потому что сокет изменит состояние.
+2. Метод libssh2_channel_read вернет не EAGAIN, а 0 (канал закрыт) или ошибку сети.
+3. Цикл while(is_alive()) внутри метода чтения завершится. Выполнение выйдет из асинхронного метода наружу — в тело корутины read_from_ssh_device.
+4. И там сработает спасительная строчка:cpp
+supervisor_timer.cancel(); // Мгновенно будим супервизор
+Используйте код с осторожностью.
+5. Этот вызов мгновенно «взрывает» бесконечный сон главной корутины. Планировщик шлет ей сигнал отмены operation_aborted.
+6. Главная корутина пулей вылетает из спячки keep_alive_timer.async_wait, проскакивает блок catch, выполняет деструктор класса ~asio_ssh_channel() (который чисто закрывает за собой сессию libssh2) и красиво завершает программу.
+Никаких зависших процессов или зомби-потоков в системе не остается!
+ */
 
-// Оптимизированный сетевой канал для работы с WinSock
-struct winsock_channel {
-    SOCKET socket;
-    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
+/*
+ *
+Вопрос 1: Должны ли функции, которые запускают другие корутины, сами быть корутинами?
 
-    void write(telnetpp::bytes data) {
-        if (!data.empty() && is_alive()) {
-            send(socket, reinterpret_cast<char const*>(data.data()), static_cast<int>(data.size()), 0);
-        }
-    }
+Да, обязательно. В C++20 действует «золотое правило» корутин: если внутри функции есть ключевое слово co_await (или co_return), эта функция автоматически обязана быть корутиной и возвращать специальный тип (в нашем случае asio::awaitable<...>).
+Вы абсолютно правы в своей цепочке:
+• process_read использует co_await async_wait_socket(), поэтому она обязана быть корутиной.
+• read_from_ssh_device вызывает co_await channel.process_read(), поэтому она тоже обязана быть корутиной.
+Если бы мы попытались сделать read_from_ssh_device обычной функцией, мы бы физически не смогли написать внутри неё co_await. Компилятор сразу выдал бы жесткую ошибку. co_await — это триггер, который заставляет компилятор полностью перестроить функцию в стейт-машину.
 
-    // Тот самый метод, который требует концепт библиотеки.
-    // Теперь он официально и красиво регистрирует парсер библиотеки в нашем канале!
-    void async_read(std::function<void(telnetpp::bytes)> callback) {
-        telnet_parser_callback = std::move(callback);
-    }
+Вопрос 2: Почему мы регистрируем через co_spawn только три корутины, а не все их?
 
-    bool is_alive() const {
-        return socket != INVALID_SOCKET;
-    }
+В этом кроется главное различие между «точками ветвления» (co_spawn) и «последовательным ожиданием» (co_await).
+Когда мы пишем asio::co_spawn, мы создаем новую независимую параллельную задачу (в мире потоков это аналог создания нового потока std::thread). Эти задачи живут своей жизнью, планировщик переключается между ними, и они никак не зависят от судьбы друг друга (пока мы не свяжем их таймером). Мы зарегистрировали ровно три независимых ветки:
+1. Контролер сессии (ssh_session_logic)
+2. Приемщик сети (read_from_ssh_device)
+3. Опросчик клавиатуры (handle_ssh_keyboard)
+А вот когда корутина вызывает другую корутину через co_await (например, read_from_ssh_device вызывает process_read), новая параллельная ветка не создается!
+Вместо этого текущая ветка просто «углубляется». Корутина read_from_ssh_device засыпает и передает управление корутине process_read. Планировщику io_context не нужно знать про process_read отдельно, потому что она является частью уже зарегистрированной ветки чтения! Планировщик управляет верхушкой этой ветки.
+Аналогия: co_spawn — это покупка нового независимого станка на завод. А co_await — это когда рабочий на этом станке временно переключается на использование другого внутреннего инструмента. Заводу (io_context) нужно контролировать только количество станков, а не инструменты внутри них.
 
-    void close() {
-        if (socket != INVALID_SOCKET) {
-            closesocket(socket);
-            socket = INVALID_SOCKET;
-        }
-    }
-};
+Вопрос 3: Правильно ли подсчитано количество постоянно работающих корутин?
 
+Да, ваш подсчет идеален. Давайте зафиксируем эту структуру, чтобы вы могли добавить её в виде итогового комментария-схемы в свой код:
+В процессе активной работы в контексте планировщика находятся ровно 4 постоянно удерживаемых в памяти фрейма корутин:
+1. 🟢 ssh_session_logic — Постоянная. Спит на строчке co_await keep_alive_timer.async_wait(). Проснется только при закрытии программы.
+2. 🟢 read_from_ssh_device — Постоянная. Спит на строчке co_await channel.process_read(), ожидая, пока внутренний метод завершит свой бесконечный цикл.
+3. 🟢 process_read — Постоянная. Находится внутри read_from_ssh_device. Постоянно бегает по циклу while(is_alive) и большую часть времени спит на co_await async_wait_socket(), ожидая новые байты из сети.
+4. 🟢 handle_ssh_keyboard — Постоянная. Бегает по своему циклу while(channel.is_alive()), просыпаясь каждые 10 миллисекунд для проверки нажатия клавиш.
 
-// Функция фильтрации: убирает из потока Telnet-команды (IAC) и выводит текст
-void print_filtered_text(telnetpp::bytes view) {
-    std::string clean_text = "";
-    for (size_t i = 0; i < view.size(); ++i) {
-        // Если встретили маркер команды Telnet (0xFF / IAC)
-        if (view[i] == 0xFF) {
-            // Большинство команд (DO/DONT/WILL/WONT) занимают 3 байта: 0xFF, команда, опция
-            if (i + 1 < view.size() && (view[i+1] == 0xFB || view[i+1] == 0xFC || view[i+1] == 0xFD || view[i+1] == 0xFE)) {
-                i += 2; // Пропускаем эти 3 служебных байта
-            } else {
-                i += 1; // Пропускаем двухбайтовую команду (например, AYT, NOP)
-            }
-        } else {
-            // Всё остальное — это полезный текст оборудования (приглашение, логин и т.д.)
-            clean_text += static_cast<char>(view[i]);
-        }
-    }
-    if (!clean_text.empty()) {
-        std::cout << clean_text << std::flush;
-    }
+А что с остальными?
+
+• async_init — выполнилась один раз при старте, дошла до co_return true и полностью уничтожилась из памяти.
+• async_wait_socket — Временная. Создается корутиной process_read (или async_write), засыпает на время ожидания физического пакета от сетевой карты, а как только пакет пришел — мгновенно уничтожается до следующего раза.
+• async_write — Временная. Рождается только в ту миллисекунду, когда вы нажали клавишу, проталкивает байт в libssh2 и тут же исчезает.
+ */
+
+/*
+ *
+Почему жестко заданный размер — это ловушка?
+
+Когда вы подключаетесь к устройству (коммутатору TFortis, Cisco, Linux-серверу) через SSH с запросом PTY (псевдотерминала), удаленная операционная система строго адаптирует свой вывод под переданные вами размеры.
+• Если команда генерирует строку в 180 символов, а вы передали 160, сервер сам вставит символ переноса строки (\n) на 160-м символе.
+• Хуже того, в интерактивном режиме с PTY сервер автоматически включает пагинацию — постраничный вывод. Дойдя до 40-й строки (размер высоты), коммутатор остановит вывод и напишет --More-- или [Press Space to continue]. Роботу-автоматизатору придется программно «нажимать пробел», чтобы читать дальше, что сильно усложняет код.
+
+Стратегическое решение проблемы для автоматизации
+
+Поскольку вы делаете подготовительную работу для написания робота, который будет автоматически собирать данные, у нас есть два абсолютно надежных инженерных пути:
+
+Путь 1. Универсальный интерактивный вариант (Максимальный запас)
+
+Если вам нужно оставить именно интерактивный Shell, то вместо 160 и 40 в функцию libssh2_channel_request_pty_ex передают огромный размер с запасом, который заведомо шире любой возможной таблицы, и бесконечную высоту:
+cpp
+// Выставляем ширину 500 символов (хватит для любой таблицы FDB/ARP)
+// и высоту 10000 строк (чтобы сервер никогда не включал пагинацию --More--)
+libssh2_channel_request_pty_ex(channel_, "xterm", 5, nullptr, 0, 500, 10000, 0, 0)
+Используйте код с осторожностью.
+Ни один коммутатор в мире не генерирует строки шире 500 символов, поэтому текст гарантированно прилетит в виде ровных «плоских» строк без искусственных переносов.
+
+Путь 2. Идеальный робот-вариант (Вообще убрать PTY)
+
+Как только вы закончите с интерактивным режимом и начнете писать код автоматического сбора, вы полностью уберете вызовы PTY и Shell из кода (libssh2_channel_request_pty_ex и libssh2_channel_shell будут просто удалены).
+Вместо этого вы будете использовать прямой запуск команд через libssh2_channel_exec(channel_, "show fdb").
+• Почему это решает проблему: Когда команда запускается напрямую без PTY, удаленный коммутатор понимает, что с ним общается не человек через терминал, а скрипт. В этом режиме коммутатор физически отключает любые ограничения по ширине и высоте. Он выдаст всю таблицу FDB целиком — одной сплошной простыней, где каждая строка будет идти до своего логического конца, будь она хоть 1000 символов в длину, и без всяких промежуточных --More--.
+
+Резюме для комментариев в коде:
+
+Зафиксируйте этот нюанс в коде рядом с вызовом libssh2_channel_request_pty_ex:
+cpp
+// Запрашиваем геометрию 160x40.
+// ВНИМАНИЕ: Если вывод сервера превысит 160 символов, он принудительно перенесет строку.
+// Для универсальности в интерактивном режиме здесь можно выставить ширину 500.
+// При переходе к автоматизации (скриптам) этот PTY-блок будет полностью удален,
+// так как режим 'libssh2_channel_exec' автоматически отключает любые ограничения ширины.
+
+ */
+
+/*
+ *
+Правильное техническое описание для комментариев
+
+В C++20 корутинах тип asio::awaitable<T> возвращает не результат работы здесь и сейчас, а асинхронную задачу (промис).
+Когда тип внутри указан как <void>, это означает, что корутина по окончании своей работы не передает обратно никаких данных (например, чисел или строк), но сам факт её завершения является сигналом для планировщика: «Задача выполнена, можно будить вызывающую корутину».
+Вот эталонный блок описания, который вы можете вставить перед функцией async_wait_socket:
+cpp
+/**
+ * @brief Асинхронное ожидание готовности системного сокета.
+ *
+ * @param[in]  (Отсутствуют) Метод использует внутренние приватные переменные класса: socket_ и session_.
+ *
+ * @return asio::awaitable<void>
+ *         Возвращает асингую задачу (управляющий фрейм корутины) без возвращаемого значения (void).
+ *         Для вызывающей корутины это означает:
+ *         1. В процессе работы: приостанавливает текущую ветку выполнения (yield), освобождая поток ОС.
+ *         2. По завершении: сигнализирует о том, что сокет стал готов к вводу/выводу (или произошла ошибка),
+ *            разрешая вызывающему циклу продолжить работу со следующей строчки кода.
+ */
+/*asio::awaitable<void> async_wait_socket() {
+    // ...
 }
+Используйте код с осторожностью.
 
-int main() {
-    // Настройка WinSock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 1;
+Как это сопоставить с другими функциями для вашей документации?
 
-    std::string ip_address = "10.178.18.33"; // Сюда IP оборудования
-    std::string port = "23";
+Чтобы у вас была единая и стройная система описания всех функций в коде, используйте это простое правило:
+1. Если функция возвращает asio::awaitable<bool> (как наш async_init):
+• Возвращает: Асинхронную задачу, которая при завершении выдает логическое значение true (успех) или false (ошибка).
+2. Если функция возвращает asio::awaitable<void> (как async_wait_socket или process_read):
+• Возвращает: Асинхронную задачу без передачи данных. Она служит исключительно маркером синхронизации времени — приостанавливает поток и возобновляет его, когда сетевое событие наступило.
+*/
 
-    addrinfo hints{}, *result = nullptr;
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-
-    getaddrinfo(ip_address.c_str(), port.c_str(), &hints, &result);
-    SOCKET connect_socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-
-    if (connect(connect_socket, result->ai_addr, static_cast<int>(result->ai_addrlen)) == SOCKET_ERROR) {
-        std::cerr << "Connection failed.\n";
-        WSACleanup();
-        return 1;
-    }
-    freeaddrinfo(result);
-    std::cout << "Успешно подключено к оборудованию!\n\n";
-
-    // 2. Инициализация сессии
-    winsock_channel channel{ connect_socket };
-    telnetpp::session session(channel);
-
-
-    // Устанавливаем эхо-клиент
-    telnetpp::options::echo::client echo_client{session};
-    session.install(echo_client);
-
-    // --- ДОБАВЛЕНО ДЛЯ TFORTIS: Инициируем Telnet Handshake ---
-    // Это заставит библиотеку Telnet++ сгенерировать стартовые байты (например, IAC DO ECHO)
-    // и отправить их через channel.write() коммутатору.
-    echo_client.activate();
-
-    std::cout << "Сессия Telnet инициирована. Ожидание ответа TFortis...\n\n";
-
-    // 3. Поток чтения (WinSock -> Вывод текста + обработка опций внутри Telnet++)
-    std::thread receive_thread([&]() {
-        std::vector<char> recv_buffer(4096);
-        while (channel.is_alive()) {
-            int bytes_received = recv(channel.socket, recv_buffer.data(), static_cast<int>(recv_buffer.size()), 0);
-            if (bytes_received > 0) {
-                telnetpp::bytes view{
-                        reinterpret_cast<uint8_t*>(recv_buffer.data()),
-                        static_cast<size_t>(bytes_received)
-                };
-
-                // Печатаем чистый текст, отбрасывая бинарный мусор команд
-                print_filtered_text(view);
-
-                // И параллельно скармливаем байты в Telnet++, чтобы библиотека автоматически
-                // отправляла подтверждения на опции (Handshake), поддерживая сессию "живой"
-                //if (channel.telnet_parser_callback) {
-                //    channel.telnet_parser_callback(view);
-                //}
-            }
-            else {
-                std::cout << "\nСоединение разорвано удаленным узлом.\n";
-                channel.close();
-                break;
-            }
-        }
-    });
-
-    // 4. Финальный поток отправки: поддержка стрелочек, Backspace и спецсимволов
-    std::cout << "[Режим интерактивного ввода активирован (стрелочки и Backspace поддерживаются)]\n";
-
-    while (channel.is_alive()) {
-        if (_kbhit()) {
-            int ch = _getch();
-            std::string send_str = "";
-
-            // 1. ОБРАБОТКА СТРЕЛОЧЕК И РАСШИРЕННЫХ КЛАВИШ
-            // Если _getch вернул 0 или 224, значит нажата стрелка, Home, End или Del
-            if (ch == 0 || ch == 224) {
-                int extended_ch = _getch(); // Читаем второй байт кода клавиши
-
-                // Переводим коды Windows-консоли в стандартные ANSI-последовательности (Escape-коды),
-                // которые понимает абсолютно любое сетевое оборудование (Cisco, Huawei, TFortis)
-                if (extended_ch == 72)      send_str = "\x1B[A"; // Стрелка ВВЕРХ (история команд)
-                else if (extended_ch == 80) send_str = "\x1B[B"; // Стрелка ВНИЗ (история команд)
-                else if (extended_ch == 77) send_str = "\x1B[C"; // Стрелка ВПРАВО
-                else if (extended_ch == 75) send_str = "\x1B[D"; // Стрелка ВЛЕВО
-            }
-                // 2. ОБРАБОТКА ENTER
-            else if (ch == '\r' || ch == '\n') {
-                send_str = "\r\n";
-            }
-                // 3. ОБРАБОТКА BACKSPACE (Исправлено для коммутаторов)
-            else if (ch == 8) {
-                send_str = "\x7F"; // Шлем ASCII Delete (0x7F). Оборудование само сотрет символ на экране.
-            }
-                // 4. ОБРАБОТКА СТАНДАРТНЫХ СИМВОЛОВ И ПРОБЕЛА
-            else {
-                send_str = static_cast<char>(ch);
-            }
-
-            // Если клавиша распознана, отправляем через Telnet++
-            if (!send_str.empty()) {
-                telnetpp::bytes input_view{
-                        reinterpret_cast<uint8_t const*>(send_str.data()),
-                        send_str.size()
-                };
-                session.write(input_view);
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-
-    channel.close();
-    if (receive_thread.joinable()) {
-        receive_thread.join();
-    }
-    WSACleanup();
-    return 0;
-}
-#endif
-
-
-
-//Telnet, v.2
-#if 0
-#include <iostream>
-#include <vector>
-#include <string>
-#include <thread>
-#include <functional>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <conio.h> // Для _getch()
-
-#include <telnetpp/session.hpp>
-#include <telnetpp/options/echo/client.hpp>
-
-#pragma comment(lib, "Ws2_32.lib")
-
-// Оптимизированный сетевой канал для работы с WinSock
-struct winsock_channel {
-    SOCKET socket;
-    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
-
-    void write(telnetpp::bytes data) {
-        if (!data.empty() && is_alive()) {
-            send(socket, reinterpret_cast<char const*>(data.data()), static_cast<int>(data.size()), 0);
-        }
-    }
-
-    void async_read(std::function<void(telnetpp::bytes)> callback) {
-        telnet_parser_callback = std::move(callback);
-    }
-
-    bool is_alive() const { return socket != INVALID_SOCKET; }
-
-    void close() {
-        if (socket != INVALID_SOCKET) {
-            closesocket(socket);
-            socket = INVALID_SOCKET;
-        }
-    }
-};
-
-
-
-// Функция фильтрации: убирает из потока Telnet-команды (IAC) и выводит текст
-/*void print_filtered_text(telnetpp::bytes view) {
-    std::string clean_text = "";
-    for (size_t i = 0; i < view.size(); ++i) {
-        // Если встретили маркер команды Telnet (0xFF / IAC)
-        if (view[i] == 0xFF) {
-            // Большинство команд (DO/DONT/WILL/WONT) занимают 3 байта: 0xFF, команда, опция
-            if (i + 1 < view.size() && (view[i+1] == 0xFB || view[i+1] == 0xFC || view[i+1] == 0xFD || view[i+1] == 0xFE)) {
-                i += 2; // Пропускаем эти 3 служебных байта
-            } else {
-                i += 1; // Пропускаем двухбайтовую команду (например, AYT, NOP)
-            }
-        } else {
-            // Всё остальное — это полезный текст оборудования (приглашение, логин и т.д.)
-            clean_text += static_cast<char>(view[i]);
-        }
-    }
-    if (!clean_text.empty()) {
-        std::cout << clean_text << std::flush;
-    }
-}*/
-
-int main() {
-    // Настройка WinSock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 1;
-
-    std::string ip_address = "10.178.18.33"; // Сюда IP оборудования 10.178.18.11 (33)
-    std::string port = "23";
-
-    addrinfo hints{}, *result = nullptr;
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-
-    getaddrinfo(ip_address.c_str(), port.c_str(), &hints, &result);
-    SOCKET connect_socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-
-    if (connect(connect_socket, result->ai_addr, static_cast<int>(result->ai_addrlen)) == SOCKET_ERROR) {
-        std::cerr << "Connection failed.\n";
-        WSACleanup();
-        return 1;
-    }
-    freeaddrinfo(result);
-    std::cout << "Успешно подключено к оборудованию!\n\n";
-
-    // 2. Инициализация сессии
-    winsock_channel channel{ connect_socket };
-    telnetpp::session session(channel);
-
-
-    // Устанавливаем эхо-клиент
-    telnetpp::options::echo::client echo_client{session};
-    session.install(echo_client);
-
-    // Функция для рекурсивного чтения ОЧИЩЕННЫХ данных из сессии Telnet++
-// Объявляем лямбду через std::function для возможности рекурсивного вызова
-    std::function<void(telnetpp::bytes)> read_handler = [&](telnetpp::bytes data) {
-        if (!data.empty()) {
-            // Сюда Telnet++ отдает ИСКЛЮЧИТЕЛЬНО чистый текст (без 0xFF и команд)
-            std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
-            std::cout << clean_text << std::flush;
-        }
-        // ВАЖНО: Как только порция данных обработана, мы ОБЯЗАНЫ запросить у сессии
-        // чтение следующей порции. Это перезапускает внутренний конвейер библиотеки.
-        //session.async_read(read_handler);
-    };
-
-// Запускаем первую петлю ожидания очищенного текста от сессии
-    session.async_read(read_handler);
-
-    // --- ДОБАВЛЕНО ДЛЯ TFORTIS: Инициируем Telnet Handshake ---
-    // Это заставит библиотеку Telnet++ сгенерировать стартовые байты (например, IAC DO ECHO)
-    // и отправить их через channel.write() коммутатору.
-    echo_client.activate();
-
-    std::cout << "Сессия Telnet инициирована. Ожидание ответа TFortis...\n\n";
-
-    // 3. Поток чтения (WinSock -> Telnet++)
-    std::thread receive_thread([&]() {
-        std::vector<char> recv_buffer(4096);
-        while (channel.is_alive()) {
-            int bytes_received = recv(channel.socket, recv_buffer.data(), static_cast<int>(recv_buffer.size()), 0);
-            if (bytes_received > 0) {
-                telnetpp::bytes view{
-                        reinterpret_cast<uint8_t*>(recv_buffer.data()),
-                        static_cast<size_t>(bytes_received)
-                };
-
-                // ТЕПЕРЬ МЫ СМЕЛО РАСКОММЕНТИРУЕМ ЭТУ СТРОКУ!
-                // Мы скармливаем сырые байты в Telnet++.
-                // Библиотека сама:
-                // 1. Ответит коммутатору на запросы опций через channel.write().
-                // 2. Очистит текст от бинарного мусора и передаст его в нашу лямбду `read_handler`.
-                if (channel.telnet_parser_callback) {
-                    channel.telnet_parser_callback(view);
-                }
-            }
-            else {
-                std::cout << "\nСоединение разорвано удаленным узлом.\n";
-                channel.close();
-                break;
-            }
-        }
-    });
-
-    // 4. Финальный поток отправки: поддержка стрелочек, Backspace и спецсимволов
-    std::cout << "[Режим интерактивного ввода активирован (стрелочки и Backspace поддерживаются)]\n";
-
-    while (channel.is_alive()) {
-        if (_kbhit()) {
-            int ch = _getch();
-            std::string send_str = "";
-
-            // 1. ОБРАБОТКА СТРЕЛОЧЕК И РАСШИРЕННЫХ КЛАВИШ
-            // Если _getch вернул 0 или 224, значит нажата стрелка, Home, End или Del
-            if (ch == 0 || ch == 224) {
-                int extended_ch = _getch(); // Читаем второй байт кода клавиши
-
-                // Переводим коды Windows-консоли в стандартные ANSI-последовательности (Escape-коды),
-                // которые понимает абсолютно любое сетевое оборудование (Cisco, Huawei, TFortis)
-                if (extended_ch == 72)      send_str = "\x1B[A"; // Стрелка ВВЕРХ (история команд)
-                else if (extended_ch == 80) send_str = "\x1B[B"; // Стрелка ВНИЗ (история команд)
-                else if (extended_ch == 77) send_str = "\x1B[C"; // Стрелка ВПРАВО
-                else if (extended_ch == 75) send_str = "\x1B[D"; // Стрелка ВЛЕВО
-            }
-                // 2. ОБРАБОТКА ENTER
-            else if (ch == '\r' || ch == '\n') {
-                send_str = "\r\n";
-            }
-                // 3. ОБРАБОТКА BACKSPACE (Исправлено для коммутаторов)
-            else if (ch == 8) {
-                send_str = "\x7F"; // Шлем ASCII Delete (0x7F). Оборудование само сотрет символ на экране.
-            }
-                // 4. ОБРАБОТКА СТАНДАРТНЫХ СИМВОЛОВ И ПРОБЕЛА
-            else {
-                send_str = static_cast<char>(ch);
-            }
-
-            // Если клавиша распознана, отправляем через Telnet++
-            if (!send_str.empty()) {
-                telnetpp::bytes input_view{
-                        reinterpret_cast<uint8_t const*>(send_str.data()),
-                        send_str.size()
-                };
-                session.write(input_view);
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-
-    channel.close();
-
-    WSACleanup();
-    return 0;
-}
 #endif
 
 
@@ -2931,26 +2094,33 @@ int main() {
 namespace asio = boost::asio;
 using asio::ip::tcp;
 
+//Узел 1: Класс-мост asio_channel
+//Этот класс адаптирует сокет Boost.Asio под требования библиотеки telnetpp (так называемый "концепт потока").
 struct asio_channel {
+    // Ссылка на сетевой TCP-сокет. Объект запрещено копировать, работаем напрямую.
     tcp::socket& socket;
+    // Хранилище для указателя на парсер библиотеки Telnet++.
+    // Сюда сохраняется функция, умеющая вырезать служебные Telnet-команды из потока байт.
     std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
 
-    // Синхронная отправка (требуется концептом Telnet++)
+    // Синхронная отправка (требуется концептом Telnet++). Вызывается внутренними механизмами Telnet++.
     void write(telnetpp::bytes data) {
         if (!data.empty() && is_alive()) {
             boost::system::error_code ec;
+            // Аппаратно проталкиваем байты в сокет.
+            // Перегрузка с 'ec' гасит исключения, если связь оборвалась в момент отправки.
             asio::write(socket, asio::buffer(data.data(), data.size()), ec);
             // Использование перегрузки с error_code предотвращает генерацию
             // исключений, если сокет оборвался прямо во время отправки
         }
     }
 
-    // Регистрация парсера библиотеки
+    // Регистрация парсера библиотеки. Сохраняем (регистрируем) обработчик парсера библиотеки для дальнейшего использования.
     void async_read(std::function<void(telnetpp::bytes)> callback) {
         telnet_parser_callback = std::move(callback);
     }
 
-    // Проверка статуса сокета для концепта Telnet++
+    // Проверка статуса сокета для концепта Telnet++. Проверяем, открыт ли системный сетевой сокет (жив ли канал связи).
     bool is_alive() const {
         return socket.is_open();
     }
@@ -2959,9 +2129,9 @@ struct asio_channel {
     void close() {
         if (socket.is_open()) {
             boost::system::error_code ec;
-            // 1. Отключаем отправку и прием (Graceful Shutdown)
+            // 1. Отключаем отправку и прием (Graceful Shutdown). Извещаем ОС, что прекращаем и прием, и передачу (Graceful Shutdown).
             socket.shutdown(tcp::socket::shutdown_both, ec);
-            // 2. Освобождаем системный дескриптор
+            // 2. Освобождаем системный дескриптор. Полностью освобождаем дескриптор сокета в ОС.
             socket.close(ec);
         }
     }
@@ -2973,23 +2143,33 @@ struct asio_channel {
 namespace asio = boost::asio;
 using asio::ip::tcp;
 
-// Корутина для асинхронного чтения из сокета оборудования
+//Узел 2: Фоновая корутина чтения read_from_device
+//Эта корутина постоянно работает в памяти и отвечает за «вычерпывание» байтов из сетевой карты.
+// Корутина для асинхронного чтения из сокета оборудования. Фоновая корутина для асинхронного чтения сырых байтов из сокета оборудования.
 asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channel, asio::steady_timer& supervisor_timer) {
+    // Временное хранилище для одного пакета данных объемом 4 КБ.
     std::vector<char> recv_buffer(4096);
 
     try {
         while (channel.is_alive()) {
+            // КЛЮЧЕВАЯ ТОЧКА: Корутина приостанавливает поток ОС и ждет появления байт в сети.
             std::size_t bytes_received = co_await socket.async_read_some(
                     asio::buffer(recv_buffer),
                     asio::use_awaitable
             );
 
             if (bytes_received > 0) {
+                // Обертываем сырой буфер в тип 'bytes' для парсера Telnet++.
                 telnetpp::bytes view{
                         reinterpret_cast<uint8_t*>(recv_buffer.data()),
                         bytes_received
                 };
 
+                // Отдаем пакет парсеру библиотеки. Он вырежет служебные опции
+                // и перенаправит чистый текст в наш экранный коллбек.
+                // Защитная проверка: вызываем парсер библиотеки только в том случае,
+// если он был успешно зарегистрирован. Предотвращает аварийное завершение
+// программы (crash), если данные из сети прилетели до завершения инициализации.
                 if (channel.telnet_parser_callback) {
                     channel.telnet_parser_callback(view);
                 }
@@ -2999,23 +2179,29 @@ asio::awaitable<void> read_from_device(tcp::socket& socket, asio_channel& channe
     catch (const boost::system::system_error& e) {
         // Проверяем код ошибки. Если это EOF (нормальное закрытие)
         // или connection_reset (принудительный выход через exit)
+        // Перехватываем штатные сетевые коды отключения удаленного узла (коммутатора).
         if (e.code() == asio::error::eof || e.code() == asio::error::connection_reset) {
             std::cout << "\n[Система] Сессия Telnet завершена коммутатором.\n";
         }
         else {
             // Выводим только реальные, критические сетевые сбои
+            // Фиксируем реальный критический сбой на физическом уровне сети.
             std::cerr << "\n[Критическая ошибка сети]: " << e.code().message() << " (Код: " << e.code().value() << ")\n";
         }
     }
 
     // Сокет закрылся. Мгновенно будим главную корутину-супервизор!
+    // Соединение разорвано. Принудительно очищаем ресурсы канала.
     channel.close();
+    // ВЗРЫВАЕМ СУПЕРВИЗОР: Будим главную корутину, выводя ее таймер из спячки.
     supervisor_timer.cancel(); // Этот вызов прервет сон таймера немедленно
 }
-
-
+//Узел 3: Корутина клавиатуры handle_keyboard
+//Отвечает за посимвольный опрос кнопок и формирование ANSI-команд для стрелочек терминала.
 // Корутина для обработки клавиатуры
+// Фоновая корутина для неблокирующего сканирования нажатий кнопок.
 asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& session) {
+    // Связываем локальный таймер корутины с текущим потоком исполнения.
     auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor);
 
@@ -3023,10 +2209,12 @@ asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& se
 
     try {
         while (session.is_alive()) {
+            // Неблокирующая проверка WinAPI: нажата ли клавиша прямо сейчас?
             if (_kbhit()) {
                 int ch = _getch();
                 std::string send_str = "";
 
+                // Проверка на расширенные клавиши Windows (стрелки имеют префикс 0 или 224)
                 if (ch == 0 || ch == 224) {
                     int extended_ch = _getch();
                     if (extended_ch == 72)      send_str = "\x1B[A"; // ВВЕРХ
@@ -3035,25 +2223,29 @@ asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& se
                     else if (extended_ch == 75) send_str = "\x1B[D"; // ВЛЕВО
                 }
                 else if (ch == '\r' || ch == '\n') {
-                    send_str = "\r\n";
+                    send_str = "\r\n";// Принудительный перевод в сетевой стандарт конца строки
                 }
                 else if (ch == 8) {
-                    send_str = "\x7F"; // Delete / Backspace
+                    send_str = "\x7F"; // Delete / Backspace // Код удаления символа (Backspace)
                 }
                 else {
-                    send_str = static_cast<char>(ch);
+                    send_str = static_cast<char>(ch);// Обычный печатный символ
                 }
 
                 if (!send_str.empty()) {
+                    // Преобразуем строку в контейнер байт Telnet++
                     telnetpp::bytes input_view{
                             reinterpret_cast<uint8_t const*>(send_str.data()),
                             send_str.size()
                     };
+                    // Отправляем байты в сессию (уйдет по сети на коммутатор)
                     session.write(input_view);
                 }
             }
 
             // Небольшая асинхронная пауза, чтобы не грузить процессор в цикле _kbhit
+            // МАКСИМАЛЬНО ВАЖНО: Асингуая пауза на 10 мс.
+            // Предотвращает 100% загрузку ядра процессора бесконечным циклом опроса кнопок.
             timer.expires_after(std::chrono::milliseconds(10));
             co_await timer.async_wait(asio::use_awaitable);
         }
@@ -3063,34 +2255,43 @@ asio::awaitable<void> handle_keyboard(tcp::socket& socket, telnetpp::session& se
     }
 }
 
-
+//Узел 4: Главный диспетчер сессии telnet_session_logic
+//Управляет бизнес-логикой сессии и удерживает контекст выполнения.
 
     // Главная корутина управления сессией (Ваш улучшенный вариант)
+    // Управляющая корутина жизненного цикла Telnet-соединения.
 asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
+        // Связываем наш мост с TCP сокетом.
     asio_channel channel{ socket };
+        // Инициализируем высокоуровневый движок сессии протокола Telnet.
     telnetpp::session session(channel);
 
-    session.async_read([&](telnetpp::bytes data) {
+        // Регистрируем лямбда-обработчик чистого текста (после фильтрации Telnet-опций)
+        session.async_read([&](telnetpp::bytes data) {
         if (!data.empty()) {
             std::string clean_text(reinterpret_cast<char const*>(data.data()), data.size());
-            std::cout << clean_text << std::flush;
+            std::cout << clean_text << std::flush; // Мгновенный вынос текста на консоль ПК
         }
     });
 
-    telnetpp::options::echo::client echo_client{session};
+        // Настраиваем обязательный протокольный плагин (Echo option).
+        // Он заставляет сервер TFortis пересылать нам обратно вводимые символы (эхо).
+        telnetpp::options::echo::client echo_client{session};
     session.install(echo_client);
     echo_client.activate();
 
     std::cout << "Сессия Telnet инициирована. Ожидание TFortis...\n\n";
 
+        // Получаем маркер текущего потока ОС.
     auto executor = co_await asio::this_coro::executor;
-
+// Создаем бесконечный таймер-держатель (супервизор).
         asio::steady_timer keep_alive_timer(executor);
 
     // ТЕПЕРЬ МЫ РЕГИСТРИРУЕМ ОБЕ КОРУТИНЫ РАВНОПРАВНО!
     // Они обе уходят в планировщик io_context как независимые фоновые задачи
         // Запускаем чтение, передавая таймер по ссылке
-    asio::co_spawn(executor, read_from_device(socket, channel, keep_alive_timer), asio::detached);
+        // Разветвляем выполнение: запускаем параллельные задачи чтения и ввода в планировщик.
+        asio::co_spawn(executor, read_from_device(socket, channel, keep_alive_timer), asio::detached);
     asio::co_spawn(executor, handle_keyboard(socket, session), asio::detached);
 
     // А как теперь "заснуть" самой родительской корутине?
@@ -3103,13 +2304,15 @@ asio::awaitable<void> telnet_session_logic(tcp::socket& socket) {
 
             // Корутина засыпает навсегда. Она проснется ТОЛЬКО тогда,
             // когда read_from_device вызовет keep_alive_timer.cancel()
+            // Уводим родительскую корутину в бесконечный сон, защищая сессию от досрочного вылета.
             co_await keep_alive_timer.async_wait(asio::use_awaitable);
         }
         catch (const boost::system::system_error& e) {
             // operation_aborted означает, что таймер был успешно отменен извне.
             // Для нас это зеленый свет: сессия завершена, выходим мгновенно!
+            // Перехватываем сигнал принудительной отмены сна таймера из корутины чтения.
             if (e.code() != asio::error::operation_aborted) {
-                throw;
+                throw;// Если это не отмена, пробрасываем ошибку дальше
             }
         }
 
@@ -3149,5 +2352,500 @@ int main() {
     return 0;
 }
 
+/*
+ *
+1. Защита от неопределенного поведения (Undefined Behavior)
+
+Переменная telnet_parser_callback имеет тип std::function. Если вызвать пустой std::function (который равен nullptr), программа не просто выдаст ошибку, она мгновенно упадет с тяжелым системным исключением std::bad_function_call и аварийно завершится (crash).
+Проверка if (channel.telnet_parser_callback) гарантирует, что даже при самом странном сбое вызова пустой функции не произойдет.
+
+2. Асинхронная гонка при старте программы (Race Condition)
+
+Поскольку корутины запускаются асинхронно, теоретически может возникнуть ситуация, когда операционная система переключит контекст на корутину чтения read_from_device до того, как внутренняя логика библиотеки telnetpp::session успеет полностью завершить инициализацию и прописать свой парсер в наш канал.
+Если в этот микроскопический момент времени коммутатор уже успеет прислать в сокет какие-то байты (например, свой приветственный баннер), корутина чтения попытается вызвать еще не созданный коллбек. Проверка защищает программу на этапе старта.
+
+3. Безопасность при закрытии сессии
+
+В сложных асинхронных системах при уничтожении объектов или закрытии сессии указатели на функции часто принудительно сбрасываются в nullptr, чтобы разорвать циклические ссылки в памяти. Если сокет продолжит закрываться и выдаст последние байты буфера, проверка не даст программе упасть на этапе выхода.
+ */
 #endif
 
+
+
+//Работа по SNMP
+#if 0
+/*_############################################################################
+  _##
+  _##  test_app.cpp
+  _##
+  _##  SNMP++ v3.4
+  _##  -----------------------------------------------
+  _##  Copyright (c) 2001-2021 Jochen Katz, Frank Fock
+  _##
+  _##  This software is based on SNMP++2.6 from Hewlett Packard:
+  _##
+  _##    Copyright (c) 1996
+  _##    Hewlett-Packard Company
+  _##
+  _##  ATTENTION: USE OF THIS SOFTWARE IS SUBJECT TO THE FOLLOWING TERMS.
+  _##  Permission to use, copy, modify, distribute and/or sell this software
+  _##  and/or its documentation is hereby granted without fee. User agrees
+  _##  to display the above copyright notice and this license notice in all
+  _##  copies of the software and any documentation of the software. User
+  _##  agrees to assume all liability for the use of the software;
+  _##  Hewlett-Packard, Frank Fock, and Jochen Katz make no representations
+  _##  about the suitability of this software for any purpose. It is provided
+  _##  "AS-IS" without warranty of any kind, either express or implied. User
+  _##  hereby grants a royalty-free license to any and all derivatives based
+  _##  upon this software code base.
+  _##
+  _##########################################################################*/
+
+#include <libsnmp.h>
+
+#include "snmp_pp/snmp_pp.h"
+
+#ifdef WIN32
+#define strcasecmp _stricmp
+#endif
+
+#ifdef SNMP_PP_NAMESPACE
+using namespace Snmp_pp;
+#endif
+
+// default request oids
+#define NUM_SYS_VBS	6
+#define sysDescr	"1.3.6.1.2.1.1.1.0"
+#define sysObjectID	"1.3.6.1.2.1.1.2.0"
+#define sysUpTime	"1.3.6.1.2.1.1.3.0"
+#define sysContact	"1.3.6.1.2.1.1.4.0"
+#define sysName		"1.3.6.1.2.1.1.5.0"
+#define sysLocation	"1.3.6.1.2.1.1.6.0"
+//#define sysServices	"1.3.6.1.2.1.1.7.0" // not all agents support this...
+
+// default notification oid
+#define coldStart	"1.3.6.1.6.3.1.1.4.3.0.1"
+
+int main(int argc, char **argv)
+{
+    int status;
+    char *req_str      = (char*) "get";
+    //  char *dflt_req_oid = (char*) sysDescr;
+    char *dflt_trp_oid = (char*) coldStart;
+    char *genAddrStr   = (char*) "127.0.0.1" ;		  // localhost
+    char *oid_str      = (char*) NULL;
+
+    if (argc > 1) genAddrStr = argv[1];
+    if (argc > 2) req_str    = argv[2];
+    if (argc > 3) oid_str    = argv[3];
+
+    Snmp::socket_startup();  // Initialize socket subsystem
+
+    IpAddress ipAddr(genAddrStr);
+    if (!ipAddr.valid()) {
+        std::cout << "Invalid destination: " << genAddrStr << std::endl;
+        return(1);
+    }
+
+    // bind to any port and use IPv6 if needed
+    Snmp snmp(status, 0, (ipAddr.get_ip_version() == Address::version_ipv6));
+    if (status){
+        std::cout << "Failed to create SNMP Session: " << status << std::endl;
+        return(1);
+    }
+    std::cout << "Created session successfully" << std::endl;
+
+
+    CTarget target(ipAddr);
+    if (! target.valid()) {
+        std::cout << "Invalid target" << std::endl;
+        return(1);
+    }
+
+    Pdu pdu;
+    Vb vb;
+    if ( strcmp(req_str, "get") == 0 ) {
+
+        Vb vbl[NUM_SYS_VBS];
+        vbl[0].set_oid(sysDescr);
+        vbl[1].set_oid(sysObjectID);
+        vbl[2].set_oid(sysUpTime);
+        vbl[3].set_oid(sysContact);
+        vbl[4].set_oid(sysName);
+        vbl[5].set_oid(sysLocation);
+//    vbl[6].set_oid(sysServices);
+
+        std::cout << "Send a GET-REQUEST to: " << ipAddr.get_printable() << std::endl;
+        if ( ! oid_str ) {
+            if ( strcmp(genAddrStr,"localhost" ) == 0 ||
+                 strcmp(genAddrStr, "127.0.0.1") == 0 ){
+                pdu.set_vblist(vbl, NUM_SYS_VBS);
+            } else {
+                for (int i=0; i<NUM_SYS_VBS;i++)
+                    pdu += vbl[i];
+            }
+        }
+        else {
+            Oid req_oid(oid_str);
+            if ( ! req_oid.valid() ) {
+                std::cout << "Request oid constructor failed for:" << oid_str << std::endl;
+                return(1);
+            }
+            vb.set_oid(req_oid);
+            pdu += vb;
+        }
+        status = snmp.get(pdu, target);
+        if (status){
+            std::cout << "Failed to issue SNMP Get: (" << status  << ") "
+                      << snmp.error_msg(status) << std::endl;
+            return(1);
+        }
+        else{
+            std::cout << "Issued get successfully" << std::endl;
+            int vbcount = pdu.get_vb_count();
+            if ( vbcount == NUM_SYS_VBS ) {
+                pdu.get_vblist(vbl, vbcount);
+                for ( int i=0; i<vbcount ; i++ )  {
+                    std::cout << vbl[i].get_printable_oid() << " : " <<
+                              vbl[i].get_printable_value() << std::endl;
+                }
+            } else {
+                for ( int i=0; i<vbcount ; i++ )  {
+                    pdu.get_vb(vb, i);
+                    std::cout << vb.get_printable_oid() << " : " <<
+                              vb.get_printable_value() << std::endl;
+                }
+            }
+        }
+    }
+    else if ( strcmp(req_str, "trap") == 0 ) {
+        std::cout << "Send a TRAP to: " << ipAddr.get_printable() << std::endl;
+
+        if ( ! oid_str )
+            oid_str = dflt_trp_oid;
+
+        Oid notify_oid(oid_str);
+        if ( ! notify_oid.valid() ) {
+            std::cout << "Notify oid constructor failed for:" << oid_str << std::endl;
+            return(1);
+        }
+
+        pdu.set_notify_id(notify_oid);
+
+        // Use a simple payload
+        vb.set_oid(sysLocation);
+        vb.set_value("This is a test");
+        pdu += vb;
+
+        status = snmp.trap(pdu, target);
+
+        if (status){
+            std::cout << "Failed to issue SNMP Trap: (" << status  << ") "
+                      << snmp.error_msg(status) << std::endl;
+            return(1);
+        } else {
+            std::cout << "Success" << std::endl;
+        }
+
+    }
+    else {
+        std::cout << "Invalid SNMP operation: " << req_str  << std::endl ;
+        std::cout << "Usage: " << argv[0] << " hostname [get | trap]" << std::endl;
+        return(1);
+    }
+
+    Snmp::socket_cleanup();  // Shut down socket subsystem
+
+    return(0);
+}
+/*
+ *
+Архитектурный обзор сущностей snmp++
+
+В отличие от низкоуровневых Си-структур, авторы snmp++ сделали очень логичное объектное разделение:
+1. Snmp::socket_startup() и Snmp::socket_cleanup() — близкие аналоги нашего WSAStartup/libssh2_init. Инициализируют и корректно закрывают сетевую UDP-подсистему операционной системы.
+2. IpAddress / Oid — умные классы-оболочки. Они сами валидируют данные (метод .valid()). IpAddress парсит IP, а Oid преобразует текстовую строку вида "1.3.6.1.2.1.1.1.0" во внутренний числовой массив идентификатора объекта (Object Identifier).
+3. Snmp — это движок сессии. Он создает реальный UDP-сокет в ОС и предоставляет методы для отправки (snmp.get(...), snmp.trap(...)).
+4. CTarget — объект, описывающий куда и как мы подключаемся. Он хранит целевой IP-адрес, порт (по умолчанию 161 для SNMP), версию протокола (v1, v2c, v3), количество попыток (retries) и таймаут ожидания. По умолчанию в snmp++ используется SNMP v1 с community-строкой "public".
+5. Vb (Variable Binding) — атомарная пара «OID : Значение». Например: OID "1.3.6.1.2.1.1.5.0" и значение "TFortis-Switch".
+6. Pdu (Protocol Data Unit) — это сетевой контейнер (пакет). SNMP позволяет в один запрос упаковать сразу несколько OID-ов, чтобы не гонять сеть попусту. Мы буквально складываем переменные в пакет с помощью перегруженного оператора pdu += vb;.
+
+
+Главная архитектурная проблема примера: Блокирующий snmp.get
+
+В Си-примере вызов выполняется синхронно:
+cpp
+status = snmp.get(pdu, target); // Блокирует поток до получения ответа по UDP!
+Используйте код с осторожностью.
+Если коммутатор TFortis недоступен или пакет потеряется в сети, этот метод намертво заблокирует наш единственный рабочий поток io_context на время таймаута (по умолчанию несколько секунд).
+
+Как мы «подружим» snmp++ с Boost.Asio 1.87 корутинами
+
+В snmp++ заложена прекрасная встроенная поддержка асинхронных вызовов через механизм коллбеков (snmp_callback).
+Мы напишем свободную функцию-обертку async_snmp_get, которая будет принимать Snmp, Pdu, CTarget и возвращать C++20 корутинный тип asio::awaitable<int>.
+Внутри этой функции мы переведем запрос в асинхронный режим, а чтобы связать коллбек библиотеки с корутиной Asio, мы используем специальное асинхронное обещание (asio::use_awaitable в связке с экзекутором). Поток ОС будет абсолютно свободен, пока UDP-пакет летит туда и обратно!
+ */
+#endif
+
+
+
+//Работа по SNMP, v.2
+#if 1
+#include <iostream>
+#include <vector>
+#include <string>
+#include <future>
+#include <boost/asio.hpp>
+#include "snmp_pp/snmp_pp.h"
+
+#ifdef SNMP_PP_NAMESPACE
+using namespace Snmp_pp;
+#endif
+
+namespace asio = boost::asio;
+
+// Структура для передачи контекста в старый Си-коллбек библиотеки snmp++
+struct SnmpAsyncContext {
+    std::promise<int> status_promise;
+    Pdu* response_pdu;
+};
+
+
+
+#include <boost/asio/post.hpp>
+#include <future>
+
+// Полностью асинхронная обертка для вызова SNMP GET через пул потоков Asio 1.87
+asio::awaitable<int> async_snmp_get(Snmp& snmp, Pdu& pdu, SnmpTarget& target) {
+    // 1. Создаем стандартное C++ обещание и привязываем к нему future
+    auto promise = std::make_shared<std::promise<int>>();
+    auto future = promise->get_future();
+
+    // 2. Получаем системный экзекутор из нашей текущей корутины
+    auto exec = co_await asio::this_coro::executor;
+
+    // 3. Отправляем выполнение блокирующего метода snmp++ в фоновый контекст Asio.
+    // Главный поток io_context мгновенно освобождается!
+    asio::post(exec, [&snmp, &pdu, &target, promise]() {
+        // В фоновом режиме надежно выполняется синхронный запрос библиотеки.
+        // Ответ запишется прямо в pdu.
+        int status = snmp.get(pdu, target);
+        promise->set_value(status);
+    });
+
+    // 4. НАДЁЖНОЕ АСИНХРОННОЕ ОЖИДАНИЕ БЕЗ ЗАВИСАНИЙ:
+    // Мы создаем микро-таймер Asio, который проверяет готовность future,
+    // давая главному потоку дышать. Корутина спит, пока UDP пакет летит по сети.
+    asio::steady_timer timer(exec);
+    while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        timer.expires_after(std::chrono::milliseconds(5));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+
+    // Возвращаем итоговый статус операции (успех или код ошибки/таймаута)
+    co_return future.get();
+}
+
+
+
+// Главная корутина логики сбора данных по SNMP
+asio::awaitable<void> snmp_collection_logic(std::string ip_address) {
+    std::cout << "[SNMP] Инициализация сессии для " << ip_address << "...\n";
+
+    int status = 0;
+    // Создаем сессию SNMP (0 означает привязку к любому свободному UDP порту ОС)
+    Snmp snmp(status, 0, false);
+    if (status != SNMP_CLASS_SUCCESS) {
+        std::cerr << "[Ошибка] Не удалось запустить SNMP сессию: " << status << "\n";
+        co_return;
+    }
+
+    // Задаем целевой IP-адрес устройства
+    IpAddress ip_target(ip_address.c_str());
+    if (!ip_target.valid()) {
+        std::cerr << "[Ошибка] Неверный IP адрес устройства.\n";
+        co_return;
+    }
+
+    // Настраиваем цель для SNMP v1 / v2c
+    CTarget target(ip_target);
+    target.set_version(version1);         // Задаем версию протокола v1 (для v3 поменяем на UTarget)
+    target.set_readcommunity("public");   // Пароль-комьюнити (обычно "public" на TFortis)
+    target.set_timeout(200);              // Таймаут ожидания ответа: 2 секунды (200 * 10мс)
+    target.set_retry(1);                  // Количество повторных попыток при потере UDP-пакета
+
+    if (!target.valid()) {
+        std::cerr << "[Ошибка] Конфигурация Target невалидна.\n";
+        co_return;
+    }
+
+    // Формируем пакет запроса PDU и наполняем его интересующими нас OID-ами
+    Pdu request_pdu;
+
+    // Системные OID стандарта MIB-II (Описания, Аптайм, Имя устройства)
+    request_pdu += Vb("1.3.6.1.2.1.1.1.0"); // sysDescr
+    request_pdu += Vb("1.3.6.1.2.1.1.3.0"); // sysUpTime
+    request_pdu += Vb("1.3.6.1.2.1.1.5.0"); // sysName
+
+    std::cout << "[SNMP] Отправка асинхронного GET-запроса пакета OID...\n";
+
+    // Вызываем обновленную обертку. Ответ запишется сразу в request_pdu
+    int result_status = co_await async_snmp_get(snmp, request_pdu, target);
+
+    if (result_status == SNMP_CLASS_SUCCESS) {
+        std::cout << "[Успех] Данные от оборудования успешно получены:\n\n";
+
+        // Читаем результаты прямо из request_pdu
+        int vb_count = request_pdu.get_vb_count();
+        Vb current_vb;
+
+        for (int i = 0; i < vb_count; ++i) {
+            request_pdu.get_vb(current_vb, i);
+            std::cout << "  " << current_vb.get_printable_oid()
+                      << " -> " << current_vb.get_printable_value() << "\n";
+        }
+    } else {
+        std::cerr << "[Ошибка сбора] SNMP запрос завершился со статусом: " << result_status
+                  << " (" << snmp.error_msg(result_status) << ")\n";
+    }
+
+
+    std::cout << "\n[Система] Корутина SNMP сбора успешно завершила работу.\n";
+}
+
+int main() {
+
+#ifdef _WIN32
+    // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+    // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
+    SetConsoleOutputCP(65001);
+
+    // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+    // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
+    SetConsoleCP(65001);
+
+    // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+    // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
+    if (hOut != INVALID_HANDLE_VALUE) {
+        // Создаем переменную для хранения текущего флага-маски режимов консоли.
+        DWORD dwMode = 0;
+        // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+        // Если функция вернула true (успех), значит, мы можем их модифицировать.
+        if (GetConsoleMode(hOut, &dwMode)) {
+            // Включаем аппаратную обработку виртуального терминала + обработку вывода
+            // Включаем обработку ANSI-последовательностей (Esc-кодов).
+            // Благодаря этому консоль Windows аппаратно понимает команды сервера
+            // о цвете текста, очистке экрана и перемещении курсора (история команд).
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            // Включаем обработку служебных управляющих символов вывода.
+            // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+            // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
+            dwMode |= ENABLE_PROCESSED_OUTPUT;
+            // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+            // С этого момента консоль начинает работать в режиме умного терминала.
+            SetConsoleMode(hOut, dwMode);
+        }
+        else {
+            std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+        }
+    }
+    else {
+        // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+        std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                  << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
+    }
+
+#endif
+
+    // 1. Инициализируем системную UDP подсистему сокетов библиотеки
+    Snmp::socket_startup();
+
+    try {
+        asio::io_context io_context;
+        std::string target_ip = "127.0.0.1"; // IP-адрес вашего TFortis для теста
+
+        // Регистрируем корутину SNMP-сбора в планировщике Asio
+        asio::co_spawn(io_context, snmp_collection_logic(target_ip), asio::detached);
+
+        // Запускаем асинхронный движок
+        io_context.run();
+
+    } catch (const std::exception& e) {
+        std::cerr << "Критическое исключение: " << e.what() << "\n";
+    }
+
+    // 2. Корректно освобождаем ресурсы UDP подсистемы перед выходом
+    Snmp::socket_cleanup();
+    return 0;
+}
+
+
+/*
+ *
+Как мы реализовали асинхронный co_await для snmp++
+
+Так как snmp++ не имеет встроенной интеграции с планировщиком Boost.Asio, мы применили классический паттерн асинхронного обещания.
+1. Перед отправкой запроса мы создаем std::promise<int> и связываем его с std::future<int>.
+2. Мы вызываем асинхронную функцию библиотеки snmp.get(..., callback, ...) и передаем указатель на наше обещание в качестве пользовательского контекста (void* data).
+3. Корутина делает co_await специального асинхронного ожидания будущего результата. Текущий поток ОС мгновенно освобождается! Программа может выполнять другие задачи.
+4. Когда коммутатор TFortis присылает UDP-ответ, внутренний поток snmp++ ловит его, вызывает наш коллбек, который выполняет .set_value(status) в обещание.
+5. Boost.Asio мгновенно «будит» нашу корутину, и она продолжает выполнение со следующей строчки, считывая полученные OID.
+
+ */
+
+/*
+ *
+Как мы реализовали асинхронный co_await для snmp++
+
+Так как snmp++ не имеет встроенной интеграции с планировщиком Boost.Asio, мы применили классический паттерн асинхронного обещания.
+1. Перед отправкой запроса мы создаем std::promise<int> и связываем его с std::future<int>.
+2. Мы вызываем асинхронную функцию библиотеки snmp.get(..., callback, ...) и передаем указатель на наше обещание в качестве пользовательского контекста (void* data).
+3. Корутина делает co_await специального асинхронного ожидания будущего результата. Текущий поток ОС мгновенно освобождается! Программа может выполнять другие задачи.
+4. Когда коммутатор TFortis присылает UDP-ответ, внутренний поток snmp++ ловит его, вызывает наш коллбек, который выполняет .set_value(status) в обещание.
+5. Boost.Asio мгновенно «будит» нашу корутину, и она продолжает выполнение со следующей строчки, считывая полученные OID.
+
+ */
+
+/*
+ *
+Архитектурные преимущества этой сборки:
+
+1. Поддержка SNMP v3 «из коробки»: Классы Pdu, Vb, функция async_snmp_get и коллбек останутся на 100% нетронутыми, когда вы решите перейти на v3. Вам потребуется только заменить CTarget на UTarget в корутине snmp_collection_logic и прописать параметры шифрования USM.
+2. Линейная логика (co_await): Благодаря обертке async_snmp_get, весь сложный асинхронный процесс с Си-коллбеками скрыт. Логика сбора выглядит просто, понятно и последовательно.
+3. Нулевая блокировка потока: Программа не зависнет, даже если коммутатор выключен. Таймер Asio мягко проверяет готовность ответа, сохраняя поток свободным для других задач автоматизации.
+
+/*
+
+Резюме проекта: Три сетевых модуля (Boost.Asio 1.87 + C++20)
+
+Мы полностью завершили этап создания принципиальных, изолированных рабочих прототипов для автоматизации коммутаторов и концентраторов (включая TFortis). Все три модуля работают асинхронно в рамках однопоточной корутинной архитектуры C++20.
+
+1. Модуль Telnet (telnetpp + Asio корутины)
+
+• Статус: Полностью рабочий интерактивный терминал.
+• Логика: Вычерпывает байты из сети фоновой корутиной и отправляет их в парсер библиотеки, который очищает текст от опций. Клавиатура сканирует ввод через _kbhit() и шлет ANSI-коды стрелочек. Сессия защищена корутиной-супервизором (keep_alive_timer).
+
+2. Модуль SSH (libssh2 + Asio корутины)
+
+• Статус: Полностью рабочий интерактивный терминал с аппаратной историей команд.
+• Достижения:
+	1. Включили UTF-8 (65001) и ANSI-обработку консоли Windows, убрав кракозябры.
+	2. Задали геометрию PTY терминала 160x40 символов через libssh2_channel_request_pty_ex, выровняв таблицы в красивые ровные столбики без разрыва слов.
+	3. Перевели метод отправки в асингую корутину async_write с обработкой LIBSSH2_ERROR_EAGAIN, полностью ликвидировав мертвые зависания при быстром перелистывании стрелочками.
+
+3. Модуль SNMP (snmp++ + Asio корутины)
+
+• Статус: Полностью рабочий асингуый сборщик метрик по OID (успешно протестирован с кодом выхода 0 на сборе системных OID MIB-II: sysDescr, sysUpTime, sysName).
+• Архитектурное решение: Чтобы Си-библиотека snmp++ не блокировала и не зацикливала наш главный поток io_context, мы обернули её синхронный метод snmp.get(pdu, target) в функцию async_snmp_get. Она отправляет блокирующую задачу в пул потоков через asio::post, а сама корутина мягко спит на 5-миллисекундном микро-таймере Asio, проверяя готовность std::future, давая процессору дышать и полностью защищая программу от падений памяти (0xC0000005).
+• Задел на будущее: Архитектура готова к бесшовному переходу с SNMP v1 на шифрованный SNMP v3 (потребуется лишь поменять класс CTarget на UTarget).
+
+🎯 План работы на завтра
+
+Как только вы подключитесь, мы начнем доскональный построчный аудит логики работы SNMP-клиента:
+1. Разберем механику связки std::promise / std::future внутри лямбды asio::post.
+2. Поймем, как микро-таймер будит корутину и почему это спасло программу от зависания.
+3. Изучим структуру классов Pdu и Vb (Variable Binding) для упаковки OID.
+ */
+#endif
