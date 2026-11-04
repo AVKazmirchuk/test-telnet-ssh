@@ -476,98 +476,7 @@ int __cdecl main()
 
 
 
-//Сканер портов
-#if 0
-#include <iostream>
-#include <cstdlib>
-#include <cstring>
-#include <cerrno>
-//#include <netinet/in.h>
-//#include <arpa/inet.h>
-//#include <sys/socket.h>
-#include "winsock2.h"
-#include <ws2tcpip.h>
-#include <unistd.h>
 
-
-
-int main(int argc, char* argv[]) {
-    // Check for correct number of arguments
-    if (argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <target-ip> <start-port> <end-port>" << std::endl;
-    return 1;
-    }
-
-    const char* target_ip = argv[1];
-    int start_port = std::atoi(argv[2]);
-    int end_port = std::atoi(argv[3]);
-
-    // Loop through the specified port range
-    for (int port = start_port; port <= end_port; ++port) {
-
-
-
-        // Initialize variables
-        WSADATA wsaData;
-        WORD LibVersion = MAKEWORD(2, 2);
-        int comm_status = WSAStartup(LibVersion, &wsaData);
-
-        if (comm_status == 0) {
-            printf("Connection OK\n");
-        }
-        else {
-            printf("ERROR\n");
-            return 0;
-        }
-
-        // Create a socket
-        SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-        if (sock == INVALID_SOCKET) {
-            printf("Error creating socket: %ld\n", WSAGetLastError());
-            WSACleanup();
-            return 1;
-        }
-        int recvTimeout = 250;
-// Set recv timeout
-        comm_status = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&recvTimeout, sizeof(int));
-        if (comm_status == SOCKET_ERROR) {
-            printf("setsockopt for SO_RCVTIMEO failed with error: %u\n", WSAGetLastError());
-        } else {
-            printf("Set SO_RCVTIMEO: ON\n");
-        }
-
-        //int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        //if (sock == -1) {
-        //    std::cerr << "Could not create socket: " << strerror(errno) << std::endl;
-        //    return 1;
-        //}
-
-        sockaddr_in server_address;
-        server_address.sin_family = AF_INET;
-        server_address.sin_port = htons(port);
-
-        // Convert IP address from text to binary form
-        if (inet_pton(AF_INET, target_ip, &server_address.sin_addr) <= 0) {
-            std::cerr << "Invalid IP address" << std::endl;
-            close(sock);
-            return 1;
-        }
-
-        // Attempt to connect to the port
-        if (connect(sock, (struct sockaddr*)&server_address, sizeof(server_address)) == 0) {
-            std::cout << "Port " << port << " is open" << std::endl;
-        }
-
-        close(sock); // Close the socket after checking
-
-        // Cleanup Winsock
-        WSACleanup();
-    }
-
-    return 0;
-}
-#endif
 
 
 
@@ -1220,230 +1129,12 @@ int main()
 
 
 
-//ping, v.1
-#if 0
-//#include "stdafx.h"
 
-#include <stdio.h>
-#include <WINSOCK2.H>
-#include <stdlib.h>
-#include <conio.h>
-#include <iostream>
-
-
-
-typedef struct tagIPINFO
-{
-    u_char Ttl; // Time To Live
-    u_char Tos; // Type Of Service
-    u_char IPFlags; // IP flags
-    u_char OptSize; // Size of options data
-    u_char FAR *Options; // Options data buffer
-}IPINFO, *PIPINFO;
-
-
-typedef struct tagICMPECHO
-{
-    u_long Source; // Source address
-    u_long Status; // IP status
-    u_long RTTime; // Round trip time in milliseconds
-    u_short DataSize; // Reply data size
-    u_short Reserved; // Unknown
-    void FAR *pData; // Reply data buffer
-    IPINFO ipInfo; // Reply options
-}ICMPECHO, *PICMPECHO;
-
-
-
-
-// ICMP.DLL Export Function Pointers
-HANDLE (WINAPI *pIcmpCreateFile)(VOID);
-BOOL (WINAPI *pIcmpCloseHandle)(HANDLE);
-DWORD (WINAPI *pIcmpSendEcho)
-        (HANDLE,DWORD,LPVOID,WORD,PIPINFO,LPVOID,DWORD,DWORD);
-
-
-//
-//
-int main(int argc, char **argv)
-{
-    WSADATA wsaData; // WSADATA
-    ICMPECHO icmpEcho; // ICMP Echo reply buffer
-    HMODULE hndlIcmp; // LoadLibrary() handle to ICMP.DLL
-    HANDLE hndlFile; // Handle for IcmpCreateFile()
-    LPHOSTENT pHost; // Pointer to host entry structure
-    struct in_addr iaDest; // Internet address structure
-    DWORD dwAddress; // IP Address
-    IPINFO ipInfo; // IP Options structure
-    int nRet; // General use return code
-    DWORD dwRet; // DWORD return code
-    int x;
-
-
-    // Check arguments
-    if (argc != 2)
-    {
-        fprintf(stderr,"\nSyntax: ping.exe [HostName]Or[IPAddress]\n");
-        return 1;
-    }
-
-
-
-    // Dynamically load the ICMP.DLL
-    hndlIcmp = LoadLibrary("ICMP.DLL");
-    if (hndlIcmp == NULL)
-    {
-        fprintf(stderr,"\nCould not load ICMP.DLL\n");
-        return 1;
-    }
-    // Retrieve ICMP function pointers
-    pIcmpCreateFile = (HANDLE (WINAPI *)(void))
-            GetProcAddress(hndlIcmp,"IcmpCreateFile");
-    pIcmpCloseHandle = (BOOL (WINAPI *)(HANDLE))
-            GetProcAddress(hndlIcmp,"IcmpCloseHandle");
-    pIcmpSendEcho = (DWORD (WINAPI *)
-            (HANDLE,DWORD,LPVOID,WORD,PIPINFO,LPVOID,DWORD,DWORD))
-            GetProcAddress(hndlIcmp,"IcmpSendEcho");
-    // Check all the function pointers
-    if (pIcmpCreateFile == NULL ||
-        pIcmpCloseHandle == NULL ||
-        pIcmpSendEcho == NULL)
-    {
-        fprintf(stderr,"\nError getting ICMP proc address\n");
-        FreeLibrary(hndlIcmp);
-        return 1;
-    }
-
-    printf("1. Dll loaded... ok \n");
-
-    // Init WinSock
-    nRet = WSAStartup(0x0101, &wsaData );
-    if (nRet)
-    {
-        fprintf(stderr,"\nWSAStartup() error: %d\n", nRet);
-        WSACleanup();
-        FreeLibrary(hndlIcmp);
-        return 1;
-    }
-    printf("2. Init WinSock  ...ok\n");
-
-    // Check WinSock version
-    if (0x0101 != wsaData.wVersion)
-    {
-        fprintf(stderr,"\nWinSock version 1.1 not supported\n");
-        WSACleanup();
-        FreeLibrary(hndlIcmp);
-        return 1;
-    }
-
-
-    // Lookup destination
-    // Use inet_addr() to determine if we're dealing with a name
-    // or an address
-    printf("3. Getting WinSock version 1.1 ...ok\n");
-
-    iaDest.s_addr = inet_addr("192.168.0.1");
-    dwAddress=inet_addr(argv[1]);
-    printf("4. Getting ip address...\n");
-
-    if (dwAddress == INADDR_NONE)
-    {
-        printf("5. No ip looking for hostname ... \n");
-        pHost = gethostbyname(argv[1]);
-        if (pHost==NULL)
-        {
-            printf("5. Warning! Can't find host name...ok\nPress any key to exit.\n");
-            getch();
-            return 1;
-        }
-
-        CopyMemory( &dwAddress,pHost->h_addr_list[0],pHost->h_length);
-        if (dwAddress == INADDR_NONE)
-        {
-            printf("5. Warning! Can't find host name.\nPress any key to exit.\n");
-            getch();
-            return 1;
-        }
-
-    }
-    else
-    {    printf("5.1. Address ok)\n");
-
-        //pHost = gethostbyaddr(inet_addr("169.254.0.1"),
-        //              sizeof(struct in_addr), AF_INET);
-    }
-    printf("6. Host != NULL ...ok\n");
-    if (pHost == NULL)
-    {
-        fprintf(stderr, "\n%s not found\n", argv[1]);
-        WSACleanup();
-        FreeLibrary(hndlIcmp);
-        return 1;
-    }
-    printf("7. Data and functionst are ...ok \n");
-    printf("8./////////////////PING//////////////// \n");
-
-    // Tell the user what we're doing
-
-
-
-
-    // Copy the IP address
-
-    //CopyMemory( &dwAddress,pHost->h_addr_list[0],pHost->h_length); //inet_addr("169.254.0.3");
-    //  dwAddress=inet_addr("169.254.0.9");
-
-//         printf(" CopyMemory ok \n");
-
-    // Get an ICMP echo request handle
-    hndlFile = pIcmpCreateFile();
-    printf("pIcmpCreateFile() ... ok \n");
-    for (x = 0; x <5;x++)
-    {      // Set some reasonable default values
-        ipInfo.Ttl = 255;
-        ipInfo.Tos = 0;
-        ipInfo.IPFlags = 0;
-        ipInfo.OptSize = 0;
-        ipInfo.Options = NULL;
-        //icmpEcho.ipInfo.Ttl = 256;
-        // Reqest an ICMP echo
-        dwRet = pIcmpSendEcho(
-                hndlFile, // Handle from IcmpCreateFile()
-                dwAddress, // Destination IP address
-                NULL, // Pointer to buffer to send
-                0, // Size of buffer in bytes
-                &ipInfo, // Request options
-                &icmpEcho, // Reply buffer
-                sizeof(struct tagICMPECHO),
-                5000); // Time to wait in milliseconds
-        printf("pIcmpSendEcho ...ok\n");
-        // Print the results
-        iaDest.s_addr = icmpEcho.Source;
-        printf("Reply from %s Time=%ldms TTL=%d\n",
-               inet_ntoa(iaDest),
-               icmpEcho.RTTime,
-               icmpEcho.ipInfo.Ttl);
-        if (icmpEcho.Status)
-        {
-            printf("\nError: icmpEcho.Status=%ld\n",icmpEcho.Status);
-            //  return ;
-            break;
-        }
-    }
-    printf("9./////////////////PING//////////////// \n");
-    printf("Press any key to exit.\n");
-    // Close the echo request file handle
-    pIcmpCloseHandle(hndlFile);
-    FreeLibrary(hndlIcmp);
-    WSACleanup();
-    getch();
-}
-#endif
 
 
 
 //ping, v.2
-#if 1
+#if 0
 #include <boost/asio.hpp>
 // Подключаем стандартные операторы корутин для организации гонки (||)
 #include <boost/asio/experimental/awaitable_operators.hpp>
@@ -1454,6 +1145,7 @@ int main(int argc, char **argv)
 #include <variant>
 
 namespace asio = boost::asio;
+using namespace asio::experimental::awaitable_operators;// Включает оператор гонки корутин '||'
 
 // Структура ICMP заголовка согласно спецификации RFC 792
 struct icmp_header {
@@ -1900,6 +1592,142 @@ header->identifier = htons(id);
 Итог:
 
 Мы не копируем заголовок внутрь вектора. Мы создали вектор нужного размера, наложили на его начало структуру-трафарет, заполнили поля через эту структуру (тем самым изменив первые 8 байт вектора), а оставшуюся часть вектора заполнили данными. В этот момент пакет считается полностью упакованным и готовым к передаче в функцию async_send_to.
+
+ Добрый день! Рад продолжить нашу работу.
+Вы абсолютно верно описали первую часть алгоритма: мы разбиваем весь пакет на 16-битные «слова», складываем их и отдельно обрабатываем «хвост», если в пакете оказалось нечетное количество байт.
+А вот финальный цикл действительно выглядит как зубодробительная математическая магия. На самом деле этот алгоритм стандартизирован в RFC 1071 и называется Internet Checksum. Он используется во всех низкоуровневых протоколах (IP, TCP, UDP, ICMP) с 1980-х годов.
+Давайте «разберем этот механизм на шестеренки» с помощью простых аналогий, и вы увидите, что логика здесь очень изящная.
+
+В чем главная проблема арифметики?
+
+Мы складываем много 16-битных чисел (максимальное значение каждого — 65535 или 0xFFFF).
+Когда мы складываем их в переменной uint32_t sum, сумма очень быстро начинает превышать 65535. Происходит переполнение, и лишние биты уходят «наверх» — в старшие 16 бит переменной sum.
+По стандарту Интернет-контрольной суммы, мы не имеем права просто выбросить эти старшие биты. Мы обязаны применить арифметику дополнения до единицы (Ones' Complement). Это значит, что все биты, которые «вышли за разрядную сетку» 16 бит, должны быть возвращены обратно и прибавлены к младшим битам.
+
+Разбор страшного цикла по строчкам
+
+Давайте посмотрим на этот цикл:
+cpp
+while (sum >> 16) {
+    sum = (sum & 0xFFFF) + (sum >> 16);
+}
+Используйте код с осторожностью.
+
+Понятие 1: Что делает sum >> 16?
+
+Эта операция сдвигает число на 16 бит вправо. Она как бы «отрезает» верхнюю половину 32-битного числа.
+• Пример: Если в sum лежит число, у которого в старших битах что-то есть, то sum >> 16 вернет эти самые «лишние» биты (перенос).
+• Условие цикла while (sum >> 16) означает: «Пока у нас в старших 16 битах есть хоть что-то (то есть число еще не помещается в рамки 16 бит), продолжай цикл».
+
+Понятие 2: Что делает sum & 0xFFFF?
+
+Маска 0xFFFF в двоичном виде — это шестнадцать единиц. Побитовое «И» (&) с этой маской обнуляет старшие 16 бит и оставляет только «чистые» младшие 16 бит нашего числа.
+
+Понятие 3: Складываем их вместе
+
+Строка sum = (sum & 0xFFFF) + (sum >> 16); по сути означает:
+«Возьми нижние 16 бит числа, возьми верхние 16 бит (которые переполнились) и сложи их между собой».
+
+Зачем нужен цикл while, а не просто один if?
+
+В 99% случаев хватает одного сложения. Но если после сложения младшей и старшей части результат снова превысил 65535 (такое бывает при очень больших пакетах), то опять возникнет перенос в старшие биты. Цикл гарантирует, что мы будем «сворачивать» число до тех пор, пока оно железно не уложится в диапазон от 0 до 65535.
+
+Последний штрих: Зачем нужна инверсия ~sum?
+
+В самом конце функция делает return static_cast<uint16_t>(~sum); (оператор ~ — это побитовое НЕ, меняет все 0 на 1, а 1 на 0).
+Это требование стандарта. По спецификации ICMP, в поле контрольной суммы должен лежать именно инвертированный результат.
+Зачем это сделано?
+Это гениальный трюк для принимающей стороны (коммутатора TFortis):
+1. Когда коммутатор получает ваш пакет, его сетевой чип складывает вообще все 16-битные слова пакета, включая вашу контрольную сумму.
+2. Поскольку вы заранее инвертировали сумму перед отправкой, при сложении «прямого» значения пакета и «инвертированного» значения чексуммы на стороне получателя, в идеальном состоянии (если кабель цел) должны получиться все единицы (0xFFFF).
+3. Проверить, равен ли результат 0xFFFF, для процессора сетевой карты — это всего одна микропроцессорная инструкция. Это позволяет сетевому оборудованию проверять миллиарды пакетов в секунду без малейших задержек.
+
+Наглядный пример "на пальцах"
+
+Представим, что мы работаем не с 16-битными числами, а с обычными двузначными числами (от 00 до 99).
+Все, что выше 99 — это переполнение (третий разряд).
+1. Мы складывали данные и у нас получилось число 125. Оно трехзначное, не влезает в «двузначный» лимит.
+2. Старший разряд (перенос) — это 1. Младший (остаток) — это 25.
+3. Сворачиваем по нашему алгоритму: 25 + 1 = 26.
+4. Теперь число 26 идеально влезает в двузначный лимит. Цикл завершен.
+5. Инвертируем его (в нашей аналогии — вычитаем из максимума): 99 - 26 = 73.
+6. Число 73 мы и отправляем в пакете.
+Стала ли теперь понятна эта низкоуровневая математика с переносом разрядов?
+Если да, то как планируете поступить дальше:
+• Перейдем к проектированию асинхронного сканера TCP-портов на корутинах?
+• Или хотите разобрать еще какие-то битовые маски в коде?
+
+так коммутатор получит пакет с контрольной суммой 73. Он всё сложит и получит результат 198. Единички хватать не будет?
+
+Вы правы, моя аналогия с вычитанием из 99 не совсем точно передала математику двоичного дополнения до единицы (Ones' Complement). Вы очень точно подметили, что простое сложение 26 + 73 дает 99, а не «круглый» ноль или перенос.
+Давайте исправим аналогию на точную двоичную математику, и вы увидите, как получается тот самый красивый результат на стороне коммутатора.
+
+Как это происходит в реальных битах (на примере 4-битных чисел)
+
+Чтобы не запутаться в 16-битных числах, возьмем маленькие 4-битные числа.
+В 4 битах максимальное число — это 1111 (в десятичной системе 15).
+Всё, что больше 15 — это переполнение (выход в 5-й бит).
+
+Шаг 1: Отправка (Ваш компьютер)
+
+Допустим, у нас в пакете всего два числа, которые мы хотим отправить: 1010 (10) и 0101 (5).
+1. Складываем их: 1010 + 0101 = 1111 (15).
+2. Старших бит для «сворачивания» тут нет (число поместилось в 4 бита).
+3. Инвертируем результат (меняем 0 на 1, а 1 на 0): Было 1111, стало 0000.
+4. Записываем эту контрольную сумму (0000) в заголовок и отправляем пакет коммутатору.
+
+Шаг 2: Получение и проверка (Коммутатор TFortis)
+
+Коммутатор получает пакет и, согласно алгоритму RFC 1071, складывает вообще всё, что пришло, включая саму контрольную сумму:
+• 1010 (первое число)
+• 0101 (второе число)
+• 0000 (ваша контрольная сумма)
+Сетевой чип складывает: 1010 + 0101 + 0000 = 1111.
+Результат — все единицы (1111)! Сетевая карта коммутатора видит, что все биты заполнены единицами, и мгновенно понимает: пакет целый.
+
+А что если при сложении было переполнение?
+
+Давайте возьмем другие числа, где при сложении на вашем компьютере вылезает лишний бит.
+Складываем 1100 (12) и 0111 (7).
+
+На вашем компьютере:
+
+1. 1100 + 0111 = 10011 (19). Появился 5-й бит (единица слева)!
+2. Работает наш страшный цикл («сворачивание»): отрезаем этот 5-й бит и прибавляем его к оставшимся 4 битам:
+0011 + 1 = 0100 (4).
+3. Теперь инвертируем результат 0100: получаем 1011. Это наша контрольная сумма. Отправляем пакет.
+
+На коммутаторе TFortis:
+
+Коммутатор складывает всё вместе: 1100 (12) + 0111 (7) + 1011 (наша чексумма).
+1. 1100 + 0111 = 10011 (19)
+2. Прибавляем чексумму: 10011 + 1011 = 11110 (30).
+3. У сетевого чипа коммутатора тоже сработает «сворачивание» переполнения (5-й бит, который равен 1, отрезается и прибавляется к младшим 4 битам):
+1110 + 1 = 1111.
+И снова на выходе получаются все единицы (1111)!
+
+В чем гениальность?
+
+Вне зависимости от того, какие числа вы отправляете, и было ли при этом переполнение, благодаря правилу «инверсии» (~sum), на стороне получателя при сложении всего пакета всегда должен получаться результат, состоящий исключительно из битовых единиц (0xFFFF для 16 бит). Если в итоговом результате затесался хотя бы один ноль — пакет поврежден.
+Теперь логика с «всеми единицами» встала на свои места?
+Если всё понятно, мы можем:
+
+ Вы абсолютно правы: пространство имен asio::experimental::awaitable_operators все еще содержит слово experimental. В версии Boost 1.87 разработчики Asio оставили его там для обратной совместимости, хотя сами операторы уже признаны стабильными.
+Если ваша цель — полностью очистить код от слова experimental и использовать только 100% стабильное, стандартное API Boost.Asio без переписывания логики корутины, у нас есть идеальный инструмент: asio::race (или его близнец asio::any_cast / asio::make_race_group).
+Начиная с последних версий Boost, функция asio::race официально стала частью основного стабильного API и решает задачу гонки корутин точно так же, как оператор ||.
+
+Локальное решение: замена оператора || на asio::race
+
+Мы меняем только внутренности метода receive_echo_reply. Вся остальная логика, рекурсия, типы данных и структура программы остаются нетронутыми.
+
+ // СТАБИЛЬНЫЙ ВАРИАНТ БЕЗ EXPERIMENTAL:
+    // Функция asio::race запускает обе корутины параллельно.
+    // Она возвращает std::variant, где индекс (0 или 1) указывает на победителя.
+    // Проигравшая корутина автоматически и безопасно отменяется.
+    auto result = co_await asio::race(
+        socket_.async_receive_from(asio::buffer(reply_buffer), sender_ep, asio::use_awaitable),
+        timer_.async_wait(asio::use_awaitable)
+    );
 
  */
 #endif
@@ -3744,6 +3572,643 @@ asio::awaitable<void> snmp_v3_collection_logic(std::string ip_address) {
  * Поскольку задачи по аудиту прототипов выполнены на отлично, какой будет наш следующий шаг?
 • Начнем проектировать общий управляющий класс (Orchestrator/Manager), который будет координировать работу всех трех модулей одновременно?
 • Или займемся созданием системы логирования / обработки ошибок для корутин, чтобы приложение умело само восстанавливать связь при сбоях в сети?
+
+ */
+#endif
+
+
+
+//Сканер портов
+#if 1
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/awaitable_operators.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+
+namespace asio = boost::asio;
+using namespace asio::experimental::awaitable_operators; // Включает оператор гонки корутин '||'
+
+// Перечисление для понятного отображения статуса порта
+enum class PortStatus {
+    Open,       // Порт открыт (получен SYN-ACK, соединение установлено)
+    Closed,     // Порт закрыт (получен RST или ICMP ошибка)
+    Filtered    // Порт молчит (таймаут, пакет застрял в Firewall / ACL)
+};
+
+class TcpScanner {
+public:
+    // Конструктор принимает исполнитель (executor) io_context
+    explicit TcpScanner(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Проверка одного конкретного TCP-порта (Атомарная операция)
+     * @param ip_address Целевой IP-адрес устройства
+     * @param port Номер порта для проверки
+     * @param timeout_ms Время ожидания ответа в миллисекундах (для локальных сетей рекомендуется 150-300)
+     */
+    asio::awaitable<PortStatus> scan_single_port(std::string ip_address, uint16_t port, std::chrono::milliseconds timeout_ms) {
+        // На каждую проверку создаем СВЕЖИЙ сокет. Повторно использовать сокет без сброса нельзя.
+        asio::ip::tcp::socket socket(executor_);
+        asio::steady_timer timer(executor_);
+
+        boost::system::error_code connect_ec = asio::error::would_block;
+
+        try {
+            // Формируем конечную точку для TCP протокола
+            asio::ip::tcp::endpoint target_ep(asio::ip::make_address(ip_address), port);
+
+            timer.expires_after(timeout_ms);
+
+            // Запускаем асинхронную гонку между подключением сокета и таймером таймаута.
+            // asio::redirect_error подавляет выброс C++ исключений на закрытых портах (экономит CPU).
+            auto race_result = co_await (
+                    socket.async_connect(target_ep, asio::redirect_error(asio::use_awaitable, connect_ec)) ||
+                    timer.async_wait(asio::use_awaitable)
+            );
+
+            // Индекс 0: Сокет проснулся первым (сеть ответила быстрее, чем прошел таймаут)
+            if (race_result.index() == 0) {
+                // Обязательно закрываем сокет, освобождая дескриптор в ОС Windows/Linux!
+                boost::system::error_code close_ec;
+                socket.close(close_ec);
+
+                if (!connect_ec) {
+                    co_return PortStatus::Open; // Ошибок нет -> соединен -> Открыт
+                } else {
+                    co_return PortStatus::Closed; // Пришел сброс (RST) -> Закрыт
+                }
+            }
+                // Индекс 1: Первым сработал таймер таймаута (устройство промолчало)
+            else {
+                boost::system::error_code close_ec;
+                socket.close(close_ec); // Принудительно разрываем зависшую попытку подключения
+                co_return PortStatus::Filtered;
+            }
+        }
+        catch (const std::exception&) {
+            // На случай невалидного IP-адреса или сбоя инициализации сокета
+            co_return PortStatus::Closed;
+        }
+    }
+
+    /**
+     * @brief Параллельное сканирование вектора портов на одном хосте
+     * @param ip_address Целевой IP-адрес
+     * @param ports Вектор портов для проверки (например: {22, 23, 80, 445})
+     * @param timeout_ms Таймаут на каждый порт
+     */
+    /**
+     * @brief Истинно параллельное сканирование вектора портов на одном хосте
+     */
+    /**
+     * @brief Истинно параллельный опрос вектора портов хоста
+     */
+    asio::awaitable<void> scan_host(std::string ip_address, const std::vector<uint16_t>& ports, std::chrono::milliseconds timeout_ms) {
+        std::cout << "[Scanner] Начинаем ПАРАЛЛЕЛЬНЫЙ опрос хоста " << ip_address << " по " << ports.size() << " портам...\n";
+
+        auto remaining_tasks = std::make_shared<size_t>(ports.size());
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        for (uint16_t port : ports) {
+            // ИСПРАВЛЕНИЕ: Вызываем именованную корутину-метод вместо лямбды.
+            // Передача port по значению гарантирует изоляцию данных!
+            asio::co_spawn(
+                    executor_,
+                    process_port_scan(ip_address, port, timeout_ms, remaining_tasks, wait_timer),
+                    asio::detached
+            );
+        }
+
+        if (*remaining_tasks > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        std::cout << "[Scanner] Параллельный опрос хоста " << ip_address << " завершен.\n\n";
+    }
+
+private:
+
+    // НОВЫЙ МЕТОД: Изолированный рабочий воркер для одного порта
+    asio::awaitable<void> process_port_scan(
+            std::string ip_address,
+            uint16_t port,
+            std::chrono::milliseconds timeout_ms,
+            std::shared_ptr<size_t> remaining_tasks,
+            std::shared_ptr<asio::steady_timer> wait_timer)
+    {
+        // Здесь port равен ровно тому значению, которое было на итерации цикла!
+        PortStatus status = co_await scan_single_port(ip_address, port, timeout_ms);
+
+        if (status == PortStatus::Open) {
+            std::string service_name = guess_service(port);
+            std::cout << "  [+] ИНФО: " << ip_address << ":" << port << " ОТКРЫТ (" << service_name << ")\n";
+        }
+
+        (*remaining_tasks)--;
+        if (*remaining_tasks == 0) {
+            wait_timer->cancel();
+        }
+        co_return;
+    }
+
+    // Вспомогательный метод для красивого логирования
+    std::string guess_service(uint16_t port) {
+        switch (port) {
+            case 21:   return "FTP / Firmware";
+            case 22:   return "SSH / Management";
+            case 23:   return "Telnet / Management";
+            case 80:   return "HTTP / Web GUI";
+            case 443:  return "HTTPS / Web GUI";
+            case 135:  return "RPC / Windows PC маркер";
+            case 445:  return "SMB / Windows PC маркер";
+            case 3389: return "RDP / Windows Remote Desktop";
+            default:   return "Unknown Service";
+        }
+    }
+
+    asio::any_io_executor executor_;
+};
+
+// Главный рабочий воркфлоу программы, оформленный как корутина
+asio::awaitable<void> run_app_workflow(std::string target_ip) {
+    // Получаем исполнитель (executor) текущей корутины
+    auto exec = co_await asio::this_coro::executor;
+
+    // Инициализируем наш сканер
+    TcpScanner scanner(exec);
+
+    // Подготавливаем тестовый вектор портов для проверки
+    std::vector<uint16_t> target_ports = {22, 23, 80, 135, 445, 3389};
+
+    // Задаем агрессивный, но безопасный таймаут для локальной сети (300 мс)
+    auto timeout = std::chrono::milliseconds(300);
+
+    // Запускаем сканирование хоста
+    co_await scanner.scan_host(target_ip, target_ports, timeout);
+}
+
+int main(int argc, char* argv[]) {
+
+#ifdef _WIN32
+    // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+    // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
+    SetConsoleOutputCP(65001);
+
+    // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+    // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
+    SetConsoleCP(65001);
+
+    // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+    // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
+    if (hOut != INVALID_HANDLE_VALUE) {
+        // Создаем переменную для хранения текущего флага-маски режимов консоли.
+        DWORD dwMode = 0;
+        // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+        // Если функция вернула true (успех), значит, мы можем их модифицировать.
+        if (GetConsoleMode(hOut, &dwMode)) {
+            // Включаем аппаратную обработку виртуального терминала + обработку вывода
+            // Включаем обработку ANSI-последовательностей (Esc-кодов).
+            // Благодаря этому консоль Windows аппаратно понимает команды сервера
+            // о цвете текста, очистке экрана и перемещении курсора (история команд).
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            // Включаем обработку служебных управляющих символов вывода.
+            // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+            // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
+            dwMode |= ENABLE_PROCESSED_OUTPUT;
+            // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+            // С этого момента консоль начинает работать в режиме умного терминала.
+            SetConsoleMode(hOut, dwMode);
+        }
+        else {
+            std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+        }
+    }
+    else {
+        // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+        std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                  << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
+    }
+
+#endif
+
+    // Проверяем аргументы командной строки
+    if (argc != 2) {
+        std::cerr << "Использование: tcp_scanner.exe [IP-Адрес]\n";
+        std::cerr << "Пример: tcp_scanner.exe 192.168.0.1\n";
+        return 1;
+    }
+
+    std::string target_ip = argv[1];
+
+    try {
+        // Создаем главный асинхронный движок
+        asio::io_context io_ctx;
+
+        // Вбрасываем нашу корневую корутину в планировщик io_context
+        asio::co_spawn(io_ctx, run_app_workflow(target_ip), asio::detached);
+
+        // Запускаем цикл обработки событий.
+        // Поток main заблокируется здесь и будет асинхронно обрабатывать пакеты
+        std::cout << "[Main] Запуск планировщика Boost.Asio..." << std::endl;
+        io_ctx.run();
+        std::cout << "[Main] Работа завершена штатно." << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[Fatal Error]: " << e.what() << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * Да, абсолютно верно. На транспортном уровне сетевой модели (L4) порты разделяются на два абсолютно независимых типа: TCP (Transmission Control Protocol) и UDP (User Datagram Protocol).
+Концептуально они работают совершенно по-разному, что напрямую влияет на то, как пишется код для их сканирования:
+
+1. TCP порты (Ориентированные на соединение)
+
+• Принцип: Перед обменом данными протокол TCP обязан установить сессию с помощью «трехэтапного рукопожатия» (3-way handshake: SYN \(\rightarrow \) SYN-ACK \(\rightarrow \) ACK).
+• Специфика сканирования: Проверить TCP-порт относительно просто. Мы вызываем асингую функцию socket.async_connect. Если коммутатор ответил согласием — порт открыт. Если сбросил соединение (RST) — порт закрыт. Если промолчал — порт закрыт файрволом.
+• Примеры: SSH (22), Telnet (23), HTTP (80), HTTPS (443).
+
+2. UDP порты (Без установления соединения)
+
+• Принцип: UDP просто «выстреливает» пакетами (датаграммами) в сеть. Ему не нужно подтверждение, готов ли получатель. Он не строит никаких сессий.
+• Специфика сканирования: Сканировать UDP невероятно сложно и медленно. Если порт открыт, сервис на той стороне (например, SNMP) может просто промолчать, если наш пакет не содержал валидного запроса. А если порт закрыт, удаленная операционная система может прислать нам обратно ICMP-пакет с ошибкой "Destination Unreachable (Port Unreachable)". Из-за этого UDP-сканирование часто сводится к логике «если за 2 секунды не прилетела ошибка ICMP — возможно, порт открыт».
+• Примеры: SNMP (161, 162), DNS (53), DHCP (67, 68).
+
+Важный нюанс для кодовой базы:
+
+Внутри одного коммутатора или сервера могут одновременно существовать TCP-порт 80 и UDP-порт 80. Они никак друг другу не мешают, не пересекаются, и обрабатываются операционной системой в разных очередях.
+
+ Разбор трехэтапного рукопожатия TCP (3-way handshake) — это ключ к пониманию того, как работают сетевые сканеры. Нам нужно разобраться, какие именно флаги отправляются в сеть и как на них реагирует операционная система (или коммутатор TFortis), чтобы мы могли правильно интерпретировать ответы сокета в коде [ENTITY_PRECISION_RECALL].
+Представьте, что два узла в сети хотят начать надежный разговор. Протокол TCP гарантирует доставку данных, поэтому перед отправкой любого полезного текста (например, команды по SSH) операционные системы обязаны «пожать друг другу руки» и согласовать начальные порядковые номера пакетов (Sequence Numbers).
+
+Три шага классического рукопожатия
+
+Внутри TCP-заголовка есть специальные битовые маркеры — флаги. В процессе рукопожатия участвуют два главных флага: SYN (Synchronize / Синхронизация) и ACK (Acknowledge / Подтверждение).
+   Ваша программа (Клиент)                 Коммутатор TFortis (Сервер)
+
+            |                                           |
+            |   1. SYN (Привет, давай свяжемся!)         |
+            |------------------------------------------>|
+            |                                           |
+            |   2. SYN-ACK (Привет! Давай. Я готов.)     |
+            |<------------------------------------------|
+            |                                           |
+            |   3. ACK (Отлично, соединение установлено)|
+            |------------------------------------------>|
+            v                                           v
+1. Шаг 1: Клиент отправляет SYN
+Ваш сканер отправляет пустой TCP-пакет, в заголовке которого взведен флаг SYN. Этим мы говорим удаленному устройству: «Я хочу открыть с тобой сессию на порту Х».
+2. Шаг 2: Сервер отвечает SYN-ACK
+Если порт на коммутаторе открыт (например, там запущен и ждет подключений Telnet-сервер на 23 порту), операционная система коммутатора принимает наш пакет и отправляет в ответ пакет, где взведены сразу два флага: SYN и ACK. Это означает: «Твой запрос подтверждаю (ACK), со своей стороны тоже готов к синхронизации (SYN)».
+3. Шаг 3: Клиент отвечает ACK
+Получив SYN-ACK, ваш компьютер отправляет финальный пакет с флагом ACK («Понял, поехали!»). На этом этапе рукопожатие завершено, операционные системы выделили буферы под сессию, и можно передавать данные.
+
+Как это использует сканер портов?
+
+Когда мы пишем сканер портов, нам не обязательно слать финальный ACK и полноценно общаться с сервисом. Нам важно лишь понять — открыта «дверь» или закрыта.
+В зависимости от состояния порта, на наш первый пакет SYN придут три совершенно разных сценария:
+
+Ответ от порта	Что произошло под капотом	Что это значит для сканера	Как это увидит Boost.Asio
+SYN-ACK	Порт открыт, служба работает и ждет клиентов.	Порт ОТКРЫТ	async_connect завершится успешно (без ошибок).
+RST (Reset)	Порт закрыт. ОС коммутатора активна, но на этом порту никто не запущен.	Порт ЗАКРЫТ	async_connect мгновенно вернет ошибку (например, Connection refused).
+Тишина (Таймаут)	Пакет либо потерялся, либо заблокирован брандмауэром (Firewall / ACL на коммутаторе).	Порт ФИЛЬТРУЕТСЯ	Наш асинхронный таймер сработает раньше, чем сокет что-то получит.
+
+💡 Флаг RST (Сброс): Если вы стучитесь в закрытую дверь, сетевой стек коммутатора не будет молчать (если нет файрвола). Он вежливо, но жестко отправит вам пакет с флагом RST. Это защитный механизм, говорящий: «Хватит сюда слать пакеты, тут никого нет».
+
+Наш подход в Boost.Asio
+
+Мы будем использовать стратегию под названием TCP Connect Scan. Она использует стандартные системные вызовы операционной системы через socket.async_connect.
+• Плюс этого метода в том, что операционная система сама берет на себя весь этот низкоуровневый танец с флагами SYN, SYN-ACK и ACK.
+• Нам не придется вручную собирать TCP-заголовки, как мы делали в пинге. Нам достаточно дать команду сокету подключиться к IP:PORT и запустить параллельный таймер таймаута на случай, если порт «молчит» (фильтруется).
+
+ Устройство TCP-сокета в Boost.Asio (asio::ip::tcp::socket) принципиально отличается от того raw-сокета, который мы использовали для пинга.
+Если в ICMP-сокете мы вручную собирали каждый байт пакета, то TCP-сокет в Asio — это высокоуровневая абстракция над потоком данных (Stream). Он полностью инкапсулирует внутри себя всю сложную логику протокола TCP: трехэтапное рукопожатие, скользящие окна (sliding windows), повторную отправку потерянных пакетов и сборку потока байт в правильном порядке.
+Разберем устройство и жизненный цикл TCP-сокета, которые нам понадобятся для написания сканера.
+
+1. Архитектурные составляющие сокета
+
+Чтобы сокет работал, ему всегда нужны три вещи:
+1. Исполнитель (Executor) — контекст (io_context), в котором будут крутиться асинхронные системные вызовы.
+2. Протокол (Protocol) — для TCP это объект asio::ip::tcp::v4() (или v6()).
+3. Конечная точка (Endpoint) — структура asio::ip::tcp::endpoint, которая в отличие от ICMP обязательно содержит два параметра: IP-адрес и номер порта.
+
+2. Как устроен asio::ip::tcp::endpoint
+
+Создание эндпоинта для TCP выглядит так:
+cpp
+// Переводим строковый IP и номер порта в бинарную структуру для TCP
+asio::ip::tcp::endpoint target_ep(asio::ip::make_address("192.168.0.1"), 80);
+Используйте код с осторожностью.
+Когда сокет начнет подключаться к этому эндпоинту, операционная система автоматически подставит порт 80 в поле Destination Port TCP-заголовка.
+
+3. Жизненный цикл сокета при сканировании (Connect Scan)
+
+Для сканера портов жизненный цикл сокета будет состоять из 4 быстрых шагов: Создание → Попытка подключения → Определение результата → Закрытие.
+   [ ШАГ 1: Создание ]  -->  socket_(executor)  (чистый, закрытый сокет в памяти)
+           |
+           v
+   [ ШАГ 2: Коннект ]   -->  co_await socket_.async_connect(target_ep, ...)
+           |
+           +-----------------------+-----------------------+
+
+           | (Успех: SYN-ACK)      | (Ошибка: RST)         | (Таймаут: Тишина)
+           v                       v                       v
+   [ ШАГ 3: Результат ] --> Открыт! (0)    --> Закрыт! (ошибка)    --> Фильтруется! (таймер)
+
+           |                       |                       |
+           +-----------------------+-----------------------|
+                                   v
+   [ ШАГ 4: Очистка ]   -->  socket_.close() (ОБЯЗАТЕЛЬНО освобождаем дескриптор ОС)
+
+Шаг 1: Создание сокета
+
+Каждый раз, когда мы хотим проверить новый порт, мы должны создавать новый, чистый объект сокета.
+cpp
+asio::ip::tcp::socket socket(executor);
+Используйте код с осторожностью.
+Важно: Если сокет уже попытался куда-то подключиться (даже неудачно), его нельзя использовать повторно для другого порта без полного сброса. Легче и безопаснее всего просто создавать его в памяти на каждой итерации цикла сканирования.
+
+Шаг 2: Асингую подключение (async_connect)
+
+Мы вызываем функцию async_connect. Под капотом Asio дает команду операционной системе отправить SYN-пакет на указанный порт.
+cpp
+co_await socket.async_connect(target_ep, asio::use_awaitable);
+Используйте код с осторожностью.
+
+Шаг 3: Обработка результатов (Как сокет сообщает об ошибках)
+
+В асинхронном C++ по умолчанию, если async_connect завершается неудачно (пришел флаг RST от закрытого порта), Asio выбрасывает исключение boost::system::system_error.
+Для сканера портов выбрасывание исключений на каждый закрытый порт — это очень «дорого» и медленно для процессора (ведь закрытых портов будет 99%). Поэтому в Asio используют специальную перегрузку с переменной boost::system::error_code, которая возвращает ошибку как обычное число:
+cpp
+boost::system::error_code ec;
+// Передаем ec в функцию. Теперь код не упадет с исключением, а запишет результат в ec
+co_await socket.async_connect(target_ep, asio::redirect_error(asio::use_awaitable, ec));
+
+if (!ec) {
+    std::cout << "Порт открыт!\n";
+} else if (ec == asio::error::connection_refused) {
+    std::cout << "Порт закрыт (получен RST)!\n";
+} else {
+    std::cout << "Другая ошибка: " << ec.message() << "\n";
+}
+Используйте код с осторожностью.
+
+Шаг 4: Обязательное закрытие (socket.close())
+
+У операционной системы есть жесткий лимит на количество одновременно открытых сокетов (дескрипторов файлов). Если после проверки порта (неважно, открыт он или закрыт) не вызвать socket.close(), то при сканировании, например, 1000 портов у вас мгновенно закончатся ресурсы ОС, и программа аварийно завершится.
+
+Как мы организуем логику сканера портов?
+
+Так же, как и в пинге, мы будем запускать гонку двух корутин через оператор || (или asio::race в будущем):
+1. Первая корутина делает socket.async_connect(...).
+2. Вторая корутина делает timer.async_wait(...) (например, на 500 миллисекунд).
+Если победил таймер — мы фиксируем состояние портов как «Заблокирован / Фильтруется файрволом» и принудительно уничтожаем/закрываем сокет.
+Устройство TCP-сокета и механизм подавления исключений через redirect_error понятны?
+Если да, то мы готовы двигаться дальше. Задавайте следующие вопросы, либо:
+• Перейдем к проектированию структуры класса TcpScanner?
+• Обсудим, как нам сканировать порты пачками (параллельно), чтобы не перегрузить сеть коммутатора TFortis?
+
+ Это один из самых важных и зрелых вопросов при проектировании сетевого софта. Вы абсолютно правы: всего существует 65 535 TCP-портов.
+Если сканировать каждый порт даже по 200 миллисекунд последовательно, проверка одного коммутатора займет около 3,5 часов. А если коммутаторов в сети TFortis несколько десятков, автоматизация потеряет всякий смысл.
+В промышленной автоматизации и сетевом инжиниринге эту проблему решают тремя стратегиями: минимизацией списка, асинхронным параллелизмом и адаптивными таймаутами.
+
+Стратегия 1: Сканирование только целевых (Top) портов
+
+Вам не нужно сканировать все 65 тысяч портов. Сетевое оборудование TFortis и сопутствующие серверы автоматизации используют строго определенный стек технологий.
+В коде сканера обычно жестко задают массив целевых портов (Target Ports). Их разделяют на логические группы:
+• Порты управления (наш приоритет):
+	• 21 — FTP (обновление прошивок)
+	• 22 — SSH (безопасное управление)
+	• 23 — Telnet (устаревшее управление)
+	• 80 / 443 — HTTP / HTTPS (веб-интерфейс коммутатора)
+• Порты мониторинга и автоматизации:
+	• 161 / 162 — SNMP / SNMP Traps (хоть это и UDP, их часто держат в уме при общем аудите)
+	• 514 — Syslog (сбор системных логов)
+	• 123 — NTP (синхронизация времени)
+• Промышленные и специфичные протоколы (если применимо):
+	• 502 — Modbus TCP (часто встречается в контроллерах автоматизации)
+Рекомендация: Для повседневного мониторинга оборудования ограничьтесь списком из 10–20 стандартных портов. Сканирование полного диапазона (1–65535) нужно запускать только раз в месяц в режиме глубокого аудита безопасности.
+
+Стратегия 2: Асинхронный параллелизм (Batching)
+
+Поскольку мы используем Boost.Asio и корутины, мы можем проверять порты пачками (батчами) параллельно, не создавая при этом 65 тысяч потоков ОС. Наш единственный поток io_context может запустить в сеть, например, 100 или 500 корутин одновременно.
+В C++20 корутинах для этого идеально подходит концепция ограничения конкурентности (Semaphore / Конвейер):
+[ Список портов: 22, 23, 80, 443, 8080... ]
+                     |
+                     v
+   +-----------------------------------+
+
+   | Ограничитель: максимум 50 портов  |  (Пул активных корутин)
+   +-----------------------------------+
+     /       |       |       |       \
+  Port22  Port23  Port80  Port443  Port8080 ... (все работают асинхронно в одном потоке)
+Как только один порт проверился (успешно или по таймауту), его корутина завершается, и конвейер тут же берет из списка следующий порт. Это позволяет держать скорость сканирования стабильно высокой, но не перегружать сетевой стек самого коммутатора.
+
+Стратегия 3: Адаптивные таймауты
+
+Если порт закрыт, коммутатор вернет флаг RST за 1–2 миллисекунды. Асинхронная корутина мгновенно закроется и перейдет к следующему порту.
+Задержку создают только те порты, которые закрыты файрволом (они «молчат»). Если поставить таймаут ожидания в 2 секунды, то на фильтруемых портах сканер будет сильно спотыкаться.
+Рекомендация: В локальной сети (где пинг до коммутатора TFortis составляет < 5 мс) таймаут на async_connect можно смело ставить в 200–300 миллисекунд. Если за треть секунды порт не ответил — для локальной автоматизации он считается недоступным.
+
+С чего начнем проектирование?
+
+Мы можем заложить в архитектуру нашего TcpScanner динамический массив портов, чтобы при вызове метода мы могли передать ему либо вектор конкретных портов std::vector<uint16_t>{22, 23, 80, 443}, либо команду «сканировать диапазон от Х до Y».
+Какая схема работы кажется вам более удобной для вашего проекта?
+• Передавать в сканер готовый список (вектор) портов?
+• Задавать диапазон (например, от 1 до 1024)?
+Давайте выберем, и я предложу структуру класса TcpScanner с учетом неблокирующей обработки ошибок, которую мы обсуждали ранее.
+
+Вы абсолютно правы: передача std::vector<uint16_t> — это самый гибкий, профессиональный и экономичный с точки зрения трафика подход. Для сетевого оборудования (коммутаторов, концентраторов) порты 22 (SSH) и 23 (Telnet), наряду с 80/443 (HTTP/HTTPS) и 161 (SNMP), являются главными маркерами присутствия.
+Что касается вашего вопроса — это классическая и очень интересная задача фингерпринтинга (OS/Device Fingerprinting), то есть определения типа устройства по косвенным сетевым признакам [ENTITY_PRECISION_RECALL].
+Если у устройства (например, обычного офисного компьютера) закрыты порты управления, определить его тип можно с помощью следующих стратегий:
+
+1. Анализ значения TTL (Time To Live) из нашего модуля Ping
+
+Это самый простой и удивительно эффективный «пассивный» метод. Разные операционные системы по умолчанию выставляют разные начальные значения TTL для своих ICMP-ответов. Когда вы пингуете устройство в локальной сети (где пакет не проходит через маршрутизаторы и TTL не уменьшается), вы видите стартовое значение:
+• TTL = 64 — Почти гарантированно Linux (а на его базе работают 95% коммутаторов, включая TFortis, роутеры, контроллеры автоматизации, Raspberry Pi, а также Android).
+• TTL = 128 — Гарантированно машина под управлением Windows (компьютер инженера, сервер, рабочая станция).
+• TTL = 255 — Часто встречается у сетевого оборудования Cisco или специфических промышленных микроконтроллеров/RTU без полноценной ОС.
+
+2. Специфичный порт-маппинг (Маркеры Windows)
+
+У обычных компьютеров на базе Windows практически всегда открыты порты для работы локальной сети, обмена файлами и удаленного администрирования. Если вы добавите в свой std::vector эти порты, вы сможете мгновенно отсечь ПК:
+• 135 (RPC) / 445 (SMB) — Если эти порты открыты, перед вами 100% Windows-компьютер. На промышленном коммутаторе или контроллере автоматизации эти порты не появятся никогда.
+• 3389 (RDP) — Удаленный рабочий стол Windows.
+
+3. Запрос по SNMP (Если доступен)
+
+Если на контроллере или компьютере включена служба SNMP (порт 161 UDP), то через ваш уже готовый SNMP-модуль можно запросить стандартный OID sysDescr (1.3.6.1.2.1.1.1.0).
+• Коммутатор вернет: "TFortis PSW-2G+ HW v..." или "Cisco IOS...".
+• Компьютер вернет: "Hardware: Intel... Software: Windows Version 10.0...".
+• Контроллер вернет название своей промышленной прошивки.
+
+4. Сканирование веб-портов (80 / 443)
+
+Если порты 22/23 закрыты, но 80 или 443 открыты, можно сделать быстрый асинхронный HTTP-запрос (например, GET / HTTP/1.1).
+• Обычный компьютер инженера вряд ли держит открытый веб-сайт.
+• Промышленный контроллер или коммутатор сразу вернет в HTTP-заголовке Server: ... или в теле страницы характерный HTML-код (название бренда, форму ввода пароля для веб-интерфейса).
+
+Архитектурный вывод для нашего сканера:
+
+Чтобы ваш оркестратор мог легко отличать ПК от коммутатора, мы заложим в TcpScanner проверку вектора, содержащего как порты управления (22, 23), так и порты-маркеры ПК (135, 445).
+Если логика распознавания устройств понятна, давайте сделаем следующий шаг:
+• Спроектируем класс TcpScanner на корутинах с поддержкой таймаута и подавлением исключений через redirect_error?
+• Или вы хотите подробнее остановиться на том, как мы организуем параллельный опрос этого вектора портов, чтобы они проверялись одновременно?
+
+ Это великолепное, стратегически точное инженерное размышление. Вы сейчас описали классический промышленный алгоритм Network Discovery (сетевого обнаружения). Использование ARP-таблиц ядра сети (Core Switch) — это самый эффективный способ быстро построить карту сети, не сканируя миллиарды пустых IP-адресов вслепую.
+Давайте разложим ваше стратегическое видение на технические этапы, которые мы учтем при проектировании нашего класса TcpScanner.
+
+Фаза 1: Первичный широковещательный поиск (Быстрый горизонтальный скан)
+
+Когда вы заходите на ядро сети по SSH и получаете списки подсетей (например, три подсети /24, а это около 750 потенциальных хостов), ваша задача — максимально быстро найти только коммутаторы.
+• Как оптимизировать: На этом этапе мы настраиваем TcpScanner так, чтобы он проверял только 2-3 критических порта управления (например, 22 и 23) и ставим агрессивный таймаут (около 150–200 мс для локальной сети).
+• При таком подходе 90% пустых IP-адресов или обычных компьютеров будут «отваливаться» по таймауту или сбросу (RST) мгновенно. Благодаря асинхронности Boost.Asio, мы сможем запустить опрос всей подсети /24 параллельно за пару секунд.
+
+Фаза 2: Построение топологии и обогащение карты через ARP
+
+Как только коммутаторы найдены, вы запрашиваете ARP-таблицу ядра сети. Она дает вам готовую пару: IP-адрес <---> MAC-адрес для всех активных устройств в сети.
+• Магия MAC-адресов: Первые 3 байта MAC-адреса (OUI — Organizationally Unique Identifier) уникальны для каждого производителя. По ним ваш оркестратор сможет мгновенно, еще до всякого сканирования портов, понять:
+	• Если MAC начинается на 00:E0:4C... (пример) — это может быть Realtek (типичная сетевая карта ПК).
+	• Если MAC принадлежит пулу вендора промышленного оборудования или коммутаторов (например, TFortis) — это явный маркер.
+• После этого вы запускаете TcpScanner точечно по тем IP из ARP-таблицы, которые не определились по MAC-адресу, используя расширенный вектор портов (135, 445, 80, 443), чтобы дорисовать на карте компьютеры и контроллеры.
+
+Что это означает для проектирования класса TcpScanner?
+
+Класс должен быть масштабируемым. Он не должен намертво привязываться к одному IP-адресу. Архитектурно правильно спроектировать его так, чтобы он умел:
+1. Принимать задачу на проверку конкретной пары (IP, Port) как атомарную (минимальную) корутину.
+2. Предоставлять высокоуровневый метод для параллельного обхода пула адресов (конвейер), где мы контролируем лимит одновременно открытых сокетов, чтобы программа не превысила лимиты дескрипторов операционной системы (например, максимум 200 параллельных соединений).
+Мы полностью подготовили почву. Логика, ограничения ОС, сетевые флаги и стратегия обхода подсетей ясны.
+Переходим к написанию кода класса TcpScanner на Boost.Asio 1.87 и C++20 корутинах?
+Если готовы, я разверну код класса TcpScanner, который:
+• Принимает std::vector<uint16_t> портов.
+• Работает асинхронно через гонку || с таймером.
+• Безопасно подавляет исключения закрытых портов через redirect_error.
+
+ Отлично! Пишем чистый, современный и масштабируемый класс TcpScanner на Boost.Asio 1.87 и корутинах C++20.
+Учитывая наши масштабные планы по сканированию целых подсетей, архитектура класса разделена на две части:
+1. Атомарная корутина scan_single_port — проверяет ровно один порт на одном IP с жестким таймаутом и без генерации тяжелых исключений.
+2. Пакетная корутина scan_host — принимает вектор портов и опрашивает их параллельно.
+
+
+Разбор ключевых инженерных решений в коде:
+
+1. Защита от утечки ресурсов (socket.close()): Обратите внимание, что при любом исходе гонки (и при успехе, и при таймауте) мы вызываем socket.close(). Если этого не сделать, дескриптор сокета зависнет в системе, и при массовом сканировании сети программа быстро упадет с ошибкой ОС "Too many open files".
+2. asio::redirect_error вместо исключений: Мы передаем объект connect_ec прямо внутрь async_connect. Это заставляет Asio работать в стиле Си-функций — просто возвращать код ошибки. На закрытых портах (которых большинство) это экономит колоссальное количество ресурсов CPU, так как раскрутка стека исключений (stack unwinding) C++ очень медленная.
+3. Параллельный запуск вектора: В методе scan_host мы собираем все корутины в вектор tasks. Они запускаются параллельно в рамках одного потока. Если вы передадите вектор из 10 портов и таймаут 200мс, весь хост проверится ровно за 200мс, а не за 2 секунды.
+Класс TcpScanner спроектирован с учетом всех требований по оптимизации. Что сделаем дальше?
+• Напишем пример функции main(), чтобы показать, как запустить этот сканер в работу?
+• Или детально разберем, как масштабировать эту логику на сканирование целой подсети (массива IP-адресов), полученной из ARP-таблицы?
+
+Вы абсолютно правы! Вы сформулировали фундаментальное правило работы с корутинами в Boost.Asio.
+Вы всё поняли идеально:
+1. Когда мы пишем co_await my_coroutine(), вызов функции возвращает временный безымянный объект (r-value). Он сразу же передает владение оператору co_await, корутина запускается, отрабатывает, и память очищается. Никакой std::move не нужен.
+2. Но как только мы сохранили этот объект в переменную или положили в контейнер (как tasks.push_back(task())), он обрел имя и стал l-value. Теперь, чтобы запустить его, мы обязаны явно сказать компилятору: «Я отдаю владение» с помощью std::move().
+
+
+Исправление scan_host для истинного параллелизма
+
+Поскольку последовательный co_await в цикле (даже со std::move) заставит порты проверяться по очереди, для истинного параллельного запуска всей пачки мы применим стабильный механизм asio::co_spawn.
+Функция co_spawn берет нашу корутину, забирает у нас владение (через тот же std::move) и мгновенно «вбрасывает» её в очередь планировщика io_context. Корутина начинает выполняться в фоне сама по себе, а co_spawn возвращает управление немедленно.
+Чтобы scan_host не завершился раньше времени (пока фоновые задачи еще проверяют порты), мы будем использовать асинхронный счетчик завершения задач на базе asio::steady_timer или простой структуры-счетчика, но в Asio 1.87 для этого идеально подходит использование asio::barrier или фоновый запуск с ожиданием. Так как мы пишем чистый C++20, мы сделаем элегантный счетчик с использованием std::shared_ptr.
+Вот переписанный, истинно параллельный метод scan_host:
+
+
+Как это теперь работает под капотом:
+
+1. Цикл for (uint16_t port : ports) пробегает по вектору мгновенно. Он не ждет ответа от сети.
+2. На каждой итерации asio::co_spawn регистрирует фоновую задачу в io_context и сразу идет дальше. Все 10 или 20 сокетов отправляют свои SYN-пакеты в сеть практически одновременно.
+3. Метод scan_host доходит до строки co_await wait_timer->async_wait и засыпает. Поток процессора полностью свободен.
+4. Фоновые корутины портов просыпаются по мере ответов от коммутатора, выводят логи об открытых портах и уменьшают счетчик remaining_tasks.
+5. Последний завершившийся порт «дергает за веревочку» — делает wait_timer->cancel(). Метод scan_host просыпается и завершает свою работу.
+Время выполнения функции теперь всегда строго равно таймауту одного самого медленного порта, сколько бы портов в векторе ни было!
+Конвейер параллельного сканирования теперь работает по правильному асинхронному принципу.
+Что сделаем на следующем шаге?
+• Напишем тестовый main.cpp, чтобы вы могли скомпилировать и проверить вживую работу сканера?
+• Или обсудим, как этот метод адаптировать для сканирования целого диапазона IP-адресов (подсети) без перегрузки дескрипторов ОС?
+
+Вы абсолютно правы, и ваш вопрос бьет в самую суть того, как работает кооперативная многозадачность (корутины) в однопоточном планировщике! Вы очень точно помните мои слова.
+Давайте разберем этот парадокс: почему при последовательном переключении планировщика работа в сети получается физически параллельной, а не последовательной.
+
+Физический смысл «параллельности» в асинхронном I/O
+
+В сетевых задачах 99.9% времени корутина не производит вычисления на CPU, а ждет ответа от сетевой карты.
+Если бы мы использовали последовательный цикл с co_await, конвейер выглядел бы так:
+1. Корутина 1 посылает пакет на порт 22 \(\rightarrow \) засыпает.
+2. Поток ОС ждет 200 мс, пока прилетит ответ от порта 22.
+3. Корутина 1 просыпается, завершается.
+4. Только теперь Корутина 2 посылает пакет на порт 23...
+• Итог: Общее время для 10 портов = 2000 мс. Это последовательная работа.
+
+Что происходит, когда мы использовали co_spawn?
+
+Когда мы вызвали co_spawn для каждого порта, планировщик действительно запускает их на CPU по очереди (последовательно), но посмотрите, в какой момент происходит переключение:
+Поток io_context (CPU)
+  |
+  |-- Запуск Порт_22 -> Вызов async_connect() -> Отправлен SYN-пакет #1 в провод!
+  |   ↳ В этот же миг Порт_22 приостанавливается (co_await). CPU свободен!
+  |
+  |-- Планировщик мгновенно берет Порт_23 -> Вызов async_connect() -> Отправлен SYN-пакет #2 в провод!
+  |   ↳ Порт_23 приостанавливается. CPU свободен!
+  |
+  |-- Планировщик мгновенно берет Порт_80 -> Вызов async_connect() -> Отправлен SYN-пакет #3 в провод!
+  |   ↳ Порт_80 приостанавливается. CPU свободен!
+  |
+  v
+(Всё это заняло менее 1 миллисекунды процессора!)
+
+Итог в этот момент времени:
+
+На CPU все три корутины сейчас приостановлены. Они не работают. Но в сетевом кабеле прямо сейчас одновременно (параллельно) летят три разных пакета к коммутатору TFortis!
+С точки зрения сетевой карты и операционной системы, эти три соединения открываются параллельно.
+
+Как происходит возврат ответов?
+
+Через 5 миллисекунд сетевая карта компьютера получает сразу три ответа от коммутатора. Операционная система складывает их в буфер сокета.
+1. Планировщик io_context просыпается, видит: «Пришел ответ для порта 80». Он будит корутину порта 80. Она обрабатывает результат за микросекунду и засыпает.
+2. Планировщик видит: «Пришел ответ для порта 22». Будит корутину порта 22...
+Общее время ожидания для всех портов составит те же самые 200 мс таймаута, потому что все пакеты ждали ответа в сети одновременно.
+
+Подведем итог:
+
+• На CPU (в процессоре): Корутины работают строго последовательно, по очереди сменяя друг друга в одном потоке, когда натыкаются на co_await.
+• В сети (на сетевой карте и кабеле): Запросы выполняются параллельно, потому что мы успели «выстрелить» всеми пакетами в сеть до того, как начали ждать ответ от первого из них.
+Именно поэтому co_spawn дает колоссальную скорость без необходимости создавать тяжелые потоки ОС (std::thread) под каждый порт.
+Разложился ли теперь этот парадокс асинхронного параллелизма?
+Если эта концепция теперь полностью прозрачна, как мы поступим:
+• Напишем тестовый main.cpp для проверки сканера портов в действии?
+• Или у вас остались еще вопросы по планировщику io_context?
+
+Это невероятно важный симптом! Вы столкнулись с классической проблемой асинхронного захвата переменных в лямбда-функциях (лямбда-задачах) внутри циклов C++.
+Давайте посмотрим на то, как сейчас написан цикл создания задач в scan_host:
+cpp
+for (uint16_t port : ports) { // <-- port живет на каждой итерации заново
+    auto task = [this, ip_address, port, timeout_ms, remaining_tasks, wait_timer]() -> asio::awaitable<void> {
+        PortStatus status = co_await scan_single_port(ip_address, port, timeout_ms);
+        // ...
+Используйте код с осторожностью.
+Когда вы пишите захват port по значению, а потом сразу делаете asio::co_spawn(executor_, task(), asio::detached);, из-за особенностей ленивого выполнения корутин C++20 компилятор может оптимизировать цикл так, что к моменту реального физического старта корутины в планировщике, переменная port уже успевает измениться на следующую из вектора! В итоге несколько корутин «считывают» из памяти одно и то же последнее значение порта (в вашем случае это оказался 3389), а реальные порты (например, 80) просто теряются.
+Вот почему на одном реальном открытом порту у вас дублируются записи, а нужный 80-й порт вообще пропал из вывода.
+
+Как это исправить железно?
+
+Чтобы разорвать эту связь, нужно передавать порт явно в качестве аргумента функции или жестко изолировать итератор цикла. Но самый надежный и чистый способ для корутин — отказаться от создания лямбд в цикле и вынести логику опроса одного порта в отдельный маленький именованный метод класса (например, process_port_scan). При вызове обычной функции C++ гарантирует, что значение port скопируется в стек задачи мгновенно и никогда не изменится.
+Давайте локально перепишем класс TcpScanner. Мы добавим один приватный метод и изменим scan_host:
+
+
+Почему теперь всё будет работать правильно:
+
+В C++20 корутинах, когда вы вызываете функцию process_port_scan(...), компилятор мгновенно (прямо в точке вызова) выделяет под неё фрейм корутины и копирует туда аргументы. Даже если цикл пойдет дальше и переменная port в цикле изменится, внутри запущенной задачи копия порта останется строго неизменной. Дублирование логов исчезнет, а затерявшийся 80-й порт отобразится корректно.
+Замените этот фрагмент в коде, и дублирование гарантированно пропадет.
+
 
  */
 #endif
