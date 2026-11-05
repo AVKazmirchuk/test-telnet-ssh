@@ -1,12 +1,24 @@
 //LocalNetworkConfig
-#if 0
+#if 1
+
+#include <string>
+#include <iostream>
+#include <vector>
+#include "boost/asio.hpp"
+
+namespace asio = boost::asio;
+
 #ifdef _WIN32
 #include <winsock2.h>
 #include <iphlpapi.h>
+
 #pragma comment(lib, "IPHLPAPI.lib")
 #endif
 
+// Структура теперь описывает ОДИН конкретный сетевой интерфейс
 struct LocalNetworkConfig {
+    ULONG interface_index;
+    std::string interface_name;   // Описание адаптера (например, "Intel(R) Ethernet Connection")
     std::string ip_address;
     std::string subnet_mask;
     std::string gateway;
@@ -14,13 +26,21 @@ struct LocalNetworkConfig {
     std::vector<std::string> dns_servers;
 };
 
+struct NetworkRoute {
+    std::string destination_subnet; // Целевая сеть (например, "10.10.0.0")
+    ULONG prefix_length;            // Длина маски CIDR (например, 16 -> /16)
+    std::string next_hop;           // Адрес шлюза для этого маршрута (Next Hop)
+    ULONG interface_index;          // Индекс сетевой карты (для связки с адаптером)
+    ULONG metric;                   // Метрика (приоритет) маршрута
+};
+
 /**
- * @brief Модуль сбора сетевых настроек текущего компьютера
+ * @brief Модуль сбора сетевых настроек для ВСЕХ активных интерфейсов текущего компьютера
  */
 class LocalConfigProvider {
 public:
-    static LocalNetworkConfig get_current_config() {
-        LocalNetworkConfig config;
+    static std::vector<LocalNetworkConfig> get_current_config() {
+        std::vector<LocalNetworkConfig> active_interfaces;
 #ifdef _WIN32
         ULONG outBufLen = 15000; // Рекомендуемый размер буфера для WinAPI
         std::vector<BYTE> buffer(outBufLen);
@@ -30,12 +50,27 @@ public:
         ULONG flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_INCLUDE_PREFIX;
         ULONG dwRetVal = GetAdaptersAddresses(AF_INET, flags, NULL, pAddresses, &outBufLen);
 
+        if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
+            buffer.resize(outBufLen);
+            pAddresses = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.data());
+            dwRetVal = GetAdaptersAddresses(AF_INET, flags, NULL, pAddresses, &outBufLen);
+        }
+
         if (dwRetVal == NO_ERROR) {
             // Итерируемся по сетевым адаптерам
             for (PIP_ADAPTER_ADDRESSES pCurrAddresses = pAddresses; pCurrAddresses != NULL; pCurrAddresses = pCurrAddresses->Next) {
-                // Нам нужны только активные интерфейсы (Ethernet/Wi-Fi), у которых есть шлюз
-                if (pCurrAddresses->OperStatus != IfOperStatusUp || pCurrAddresses->FirstGatewayAddress == NULL) {
+                // Нам нужны только активные интерфейсы (OperStatus == IfOperStatusUp)
+                // Исключаем Loopback ( IfType == IF_TYPE_SOFTWARE_LOOPBACK )
+                if (pCurrAddresses->OperStatus != IfOperStatusUp || pCurrAddresses->IfType == IF_TYPE_SOFTWARE_LOOPBACK) {
                     continue;
+                }
+
+                LocalNetworkConfig config;
+
+                // Извлекаем понятное имя адаптера (конвертируем wchar_t* описание в обычную строку)
+                if (pCurrAddresses->Description) {
+                    std::wstring wdesc(pCurrAddresses->Description);
+                    config.interface_name = std::string(wdesc.begin(), wdesc.end());
                 }
 
                 // 1. Получаем IP и маску (извлекаем первый IPv4 адрес интерфейса)
@@ -53,7 +88,12 @@ public:
                     }
                 }
 
-                // 2. Получаем основной шлюз (Gateway)
+                // Если у интерфейса нет назначенного IPv4 адреса — он нам не интересен для сканирования
+                if (config.ip_address.empty()) {
+                    continue;
+                }
+
+                // 2. Получаем основной шлюз (Gateway) для ЭТОГО адаптера
                 if (pCurrAddresses->FirstGatewayAddress && pCurrAddresses->FirstGatewayAddress->Address.lpSockaddr->sa_family == AF_INET) {
                     sockaddr_in* sa_in = reinterpret_cast<sockaddr_in*>(pCurrAddresses->FirstGatewayAddress->Address.lpSockaddr);
                     config.gateway = inet_ntoa(sa_in->sin_addr);
@@ -73,40 +113,123 @@ public:
                     config.dhcp_server = inet_ntoa(sa_in->sin_addr);
                 }
 
-                // Нашли основной активный адаптер — выходим
-                if (!config.ip_address.empty()) break;
+                config.interface_index = pCurrAddresses->IfIndex; // Сохраняем индекс интерфейса Windows
+                // ИСПРАВЛЕНИЕ: Вместо break мы складываем конфигурацию адаптера в вектор и идем на следующий шаг цикла!
+                active_interfaces.push_back(config);
             }
         }
 #else
-        // Заглушка для Linux (использует утилиты или netlink в реальном коде)
-        config.ip_address = "192.168.1.10";
-        config.subnet_mask = "255.255.255.0";
-        config.gateway = "192.168.1.1";
+        // Заглушка для Linux
+        LocalNetworkConfig eth, wlan;
+        eth.interface_name = "eth0 (Кабель)"; eth.ip_address = "192.168.1.10"; eth.subnet_mask = "255.255.255.0"; eth.gateway = "192.168.1.1";
+        wlan.interface_name = "wlan0 (Wi-Fi)"; wlan.ip_address = "172.16.0.50"; wlan.subnet_mask = "255.255.240.0"; wlan.gateway = "172.16.0.1";
+        active_interfaces.push_back(eth);
+        active_interfaces.push_back(wlan);
 #endif
-        return config;
+        return active_interfaces;
+    }
+
+    /**
+     * @brief Получает полную таблицу маршрутизации IPv4 из операционной системы Windows
+     */
+    static std::vector<NetworkRoute> get_routing_table() {
+        std::vector<NetworkRoute> routes;
+
+#ifdef _WIN32
+        PMIB_IPFORWARD_TABLE2 pForwardTable = nullptr;
+
+        // Запрашиваем таблицу маршрутизации только для IPv4 (AF_INET)
+        DWORD dwRetVal = GetIpForwardTable2(AF_INET, &pForwardTable);
+
+        if (dwRetVal == NO_ERROR && pForwardTable != nullptr) {
+            // Пробегаем по всем маршрутам в полученной таблице
+            for (ULONG i = 0; i < pForwardTable->NumEntries; i++) {
+                MIB_IPFORWARD_ROW2 row = pForwardTable->Table[i];
+
+                // Нам интересны только постоянные или динамические маршруты,
+                // исключаем петлевые (loopback) адреса хоста типа 127.0.0.1/32
+                if (row.DestinationPrefix.Prefix.si_family != AF_INET) {
+                    continue;
+                }
+
+                NetworkRoute route;
+                route.interface_index = row.InterfaceIndex;
+                route.metric = row.Metric;
+                route.prefix_length = row.DestinationPrefix.PrefixLength;
+
+                // 1. Извлекаем целевую подсеть (Destination Prefix)
+                sockaddr_in* dest_sin = reinterpret_cast<sockaddr_in*>(&row.DestinationPrefix.Prefix.Ipv4);
+                route.destination_subnet = inet_ntoa(dest_sin->sin_addr);
+
+                // Исключаем локальный петлевой трафик для чистоты логов Оркестратора
+                if (route.destination_subnet == "127.0.0.1" || route.destination_subnet == "127.0.0.0") {
+                    continue;
+                }
+
+                // 2. Извлекаем шлюз (Next Hop)
+                if (row.NextHop.si_family == AF_INET) {
+                    sockaddr_in* next_hop_sin = reinterpret_cast<sockaddr_in*>(&row.NextHop.Ipv4);
+                    route.next_hop = inet_ntoa(next_hop_sin->sin_addr);
+                } else {
+                    route.next_hop = "0.0.0.0"; // Прямой маршрут (On-link), шлюз не нужен
+                }
+
+                routes.push_back(route);
+            }
+
+            // ОБЯЗАТЕЛЬНО освобождаем память, выделенную WinAPI функцией!
+            FreeMibTable(pForwardTable);
+        } else {
+            std::cerr << "[ConfigProvider] Ошибка получения таблицы маршрутов. Код: " << dwRetVal << "\n";
+        }
+#else
+        // Заглушка для Linux
+        NetworkRoute r1;
+        r1.destination_subnet = "0.0.0.0"; r1.prefix_length = 0; r1.next_hop = "192.168.1.1"; r1.interface_index = 1; r1.metric = 100;
+        routes.push_back(r1);
+#endif
+        return routes;
     }
 };
+
 
 asio::awaitable<void> run_app_workflow() {
     auto exec = co_await asio::this_coro::executor;
 
-    // --- Тест 1: Локальная конфигурация ---
-    std::cout << "=== СБОР ЛОКАЛЬНОЙ КОНФИГУРАЦИИ ===\n";
-    LocalNetworkConfig local_cfg = LocalConfigProvider::get_current_config();
-    std::cout << "Мой IP:       " << local_cfg.ip_address << "\n"
-              << "Маска:        " << local_cfg.subnet_mask << "\n"
-              << "Шлюз (GW):    " << local_cfg.gateway << "\n"
-              << "DHCP-Сервер:  " << local_cfg.dhcp_server << "\n";
-    for(const auto& dns : local_cfg.dns_servers) {
-        std::cout << "DNS-Сервер:   " << dns << "\n";
+    std::cout << "=== 1. АКТИВНЫЕ СЕТЕВЫЕ ИНТЕРФЕЙСЫ ===\n";
+    auto interfaces = LocalConfigProvider::get_current_config();
+    for (const auto& iface : interfaces) {
+        std::cout << "Карта [ID: " << iface.interface_index << "]: " << iface.interface_name << "\n"
+                  << "  IP/Маска:   " << iface.ip_address << " / " << iface.subnet_mask << "\n"
+                  << "  Шлюз по ум.: " << (iface.gateway.empty() ? "НЕТ" : iface.gateway) << "\n"
+                  << "  DHCP:       " << (iface.dhcp_server.empty() ? "НЕТ (Static)" : iface.dhcp_server) << "\n"
+                  << "--------------------------------------------------\n";
+
+        for (const auto& dns : iface.dns_servers) {
+            std::cout << "  DNS-Сервер: " << dns << "\n";
+        }
+        std::cout << "--------------------------------------------------\n";
+    }
+
+    std::cout << "\n=== 2. СИСТЕМНАЯ ТАБЛИЦА МАРШРУТИЗАЦИИ IPv4 ===\n";
+    auto routes = LocalConfigProvider::get_routing_table();
+
+    // Выводим красивую шапку таблицы
+    std::printf("%-18s %-10s %-18s %-12s %-6s\n", "Сеть Назначения", "Маска CIDR", "Шлюз (Next Hop)", "Индекс Карты", "Метрика");
+    std::cout << "=========================================================================\n";
+
+    for (const auto& route : routes) {
+        std::printf("%-18s /%-9d %-18s %-12d %-6d\n",
+                    route.destination_subnet.c_str(),
+                    route.prefix_length,
+                    route.next_hop.c_str(),
+                    route.interface_index,
+                    route.metric);
     }
     std::cout << "\n";
-
-
 }
 
-int main()
-{
+
 
     int main(int argc, char* argv[]) {
 
@@ -182,7 +305,7 @@ int main()
         }
 
         return 0;
-    }
+
 
 }
 
@@ -192,6 +315,187 @@ int main()
 
 Получение настроек сети (особенно шлюза, DHCP и DNS) сильно зависит от операционной системы. Boost.Asio предоставляет кроссплатформенный класс asio::ip::network_v4, с помощью которого можно вытащить IP и маску локальных интерфейсов, но для получения шлюза, DNS и DHCP требуются системные API (Windows API / Linux netlink).
 Ниже представлена реализация для Windows (так как в вашем main используется SetConsoleOutputCP). Она использует функцию GetAdaptersAddresses, которая возвращает абсолютно всю конфигурацию интерфейсов в системе.
+
+Разбор архитектуры LocalConfigProvider
+
+
+1. Выделение памяти через std::vector<BYTE>
+
+Использование конструкции std::vector<BYTE> buffer(outBufLen); — это лучшая практика. Старые примеры MSDN предлагают использовать malloc() и free(), что привело бы к утечке памяти, если бы внутри цикла произошел непредвиденный throw. Вектор гарантирует автоматическое освобождение памяти (RAII).
+
+2. Трюк с вычислением маски подсети
+
+Вы написали очень лаконичную и правильную битовую математику для конвертации префикса (CIDR) в стандартную маску:
+cpp
+ULONG mask = (0xFFFFFFFF << (32 - pUnicast->OnLinkPrefixLength)) & 0xFFFFFFFF;
+Используйте код с осторожностью.
+Например, если OnLinkPrefixLength равен 24 (типичный префикс подсети /24):
+1. 32 - 24 = 8.
+2. 0xFFFFFFFF << 8 сдвигает 32-битное число, заполненное единицами, на 8 бит влево. На месте младших битов появляются нули.
+3. Получается 0xFFFFFF00 (в двоичном виде: 24 единицы и 8 нулей).
+4. Функция htonl() правильно переворачивает байты в сетевой порядок (Big Endian), а inet_ntoa превращает это в "255.255.255.0". Всё работает как швейцарские часы.
+
+Маленькие, но важные нюансы на будущее (Code Review)
+
+Хотя код рабочий, в нем есть два момента, о которых нужно знать при интеграции в постоянный проект:
+
+А. Потокобезопасность inet_ntoa
+
+Функция inet_ntoa является устаревшей (deprecated) в современном сетевом программировании. Она возвращает указатель на статический буфер внутри системной библиотеки ws2_32.dll.
+• Риск: Если вызвать inet_ntoa параллельно из двух корутин, они перепишут буфер друг друга.
+• Решение: Поскольку данный метод get_current_config() вызывается один раз при старте Оркестратора и работает синхронно (без co_await), сейчас это полностью безопасно. Но если в будущем вы захотите вызывать WinAPI функции асинхронно, лучше заменить её на inet_ntop, как мы делали ранее.
+
+Б. Ошибка в имени структуры DHCP
+
+В коде получения DHCP-сервера есть опечатка (небольшое расхождение с синтаксисом WinAPI):
+cpp
+// У вас в коде:
+if (pCurrAddresses->Dhcpv4Enabled && pCurrAddresses->Dhcpv4Server.lpSockaddr)
+// В официальном WinAPI структура называется:
+if (pCurrAddresses->Dhcpv4Enabled && pCurrAddresses->Dhcpv4Server.RemoteAddress.lpSockaddr)
+Используйте код с осторожностью.
+Уточнение: Если ваш компилятор (MSVC/MinGW) успешно пропустил Dhcpv4Server.lpSockaddr, возможно, используется специфическая версия заголовочных файлов SDK, но по стандарту поле Dhcpv4Server имеет тип SOCKET_ADDRESS, внутри которого лежит структура RemoteAddress. Если при сборке на другой машине возникнет ошибка, вы будете знать, куда смотреть.
+
+Как Оркестратор применит этот модуль?
+
+Паттерн использования модуля в Оркестраторе будет следующим:
+1. Вызываем LocalConfigProvider::get_current_config().
+2. Берем local_cfg.ip_address и local_cfg.subnet_mask.
+3. Передаем их в наш сетевой генератор Asio (asio::ip::make_network_v4), который мы написали в прошлый раз.
+4. Получаем чистый диапазон IP-адресов всей нашей подсети.
+5. Загружаем этот диапазон в boost::asio::experimental::channel нашего пула воркеров для молниеносного сканирования.
+Сбор локальной конфигурации закрыт полностью.
+Мы верифицировали и разобрали логику LocalConfigProvider. По какому пути двинемся дальше:
+• Перейдем к разбору следующего по плану модуля — TcpTraceroute (асинхронная трассировка маршрута по TTL)?
+• Или у вас появились вопросы по битовым маскам и структурам WinAPI адаптеров?
+
+вопрос. А все эти WinAPI есть в asio? Или только так можно получить?
+
+Короткий ответ: нет, в Boost.Asio таких функций нет.
+Сетевой движок Boost.Asio не предоставляет готовых кроссплатформенных методов для получения маски подсети, основного шлюза, адресов DHCP или детального списка физических адаптеров [ENTITY_PRECISION_RECALL].
+Чтобы собрать эту информацию, приходится использовать именно системные WinAPI (или Netlink/getifaddrs в Linux).
+
+Почему этого нет в Asio?
+
+Разработчики Boost.Asio строго следуют философии разделения обязанностей:
+1. Зона ответственности Asio: Асинхронный ввод-вывод. Это отправка и прием пакетов, управление сокетами, таймерами, корутинами и потоками.
+2. Зона ответственности Операционной Системы (ОС): Управление сетевыми интерфейсами, таблицами маршрутизации, конфигурацией IP и драйверами.
+Поскольку на разных ОС (Windows, Linux, macOS, FreeBSD) сетевые стеки утилитарно усложнены и работают совершенно по-разному, попытка написать единую универсальную абстракцию над настройками адаптеров раздула бы библиотеку Boost в разы.
+
+Что Asio умеет делать из коробки?
+
+Asio предоставляет только самый базовый механизм разрешения имен — класс asio::ip::tcp::resolver (который мы использовали для DnsResolver). Он работает поверх системной функции getaddrinfo. С его помощью можно узнать IP-адрес своего компьютера, если спросить локальное имя (Local Hostname):
+cpp
+asio::ip::tcp::resolver resolver(io_context);
+// Вернет только локальные IP-адреса, привязанные к имени ПК:
+auto results = resolver.resolve(asio::ip::host_name(), "");
+Используйте код с осторожностью.
+Минусы подхода Asio: Этот метод вернет только голые IP-адреса. Вы никогда не узнаете через него, какая у этого адреса маска, где находится шлюз и включен ли вообще этот адаптер прямо сейчас.
+
+Как поступают в профессиональной разработке?
+
+Именно так, как сделали вы в модуле LocalConfigProvider:
+• Обертывают специфичные низкоуровневые системные вызовы (WinAPI GetAdaptersAddresses для Windows или getifaddrs для Linux) в свои изолированные C++ классы.
+• Извлекают из них чистые строки и числа.
+• Передают эти данные в Boost.Asio (например, в asio::ip::make_network_v4), чтобы запустить высокопроизводительное асинхронное сканирование.
+Ваш подход с разделением WinAPI-конфигуратора и Asio-сканера является абсолютно правильным и стандартным для системного программирования.
+Поскольку природа системных вызовов теперь ясна, мы готовы двигаться дальше по плану.
+Что разберем на следующем шаге:
+• Перейдем к разбору и проектированию асинхронного модуля TcpTraceroute (трассировка маршрута на базе изменения TTL сокета)?
+• Или вы хотите уточнить еще какие-то детали по структурам сетевых интерфейсов?
+
+я сейчас проштудирую код и возможно как всегда задам вопросы
+
+Отличный подход. Глубокое понимание каждого шага в системном коде — залог того, что при интеграции в Оркестратор архитектура не «поплывет».
+Делаем паузу. Спокойно и внимательно проштудируйте код LocalConfigProvider. Посмотрите на:
+• То, как мы фильтруем адаптеры (проверка OperStatus != IfOperStatusUp и проверка наличия шлюза, чтобы не зацепить виртуальные хвосты от Docker или Loopback) [ENTITY_PRECISION_RECALL].
+• То, как устроены вложенные циклы (pCurrAddresses->FirstUnicastAddress и далее), ведь это классические связные списки из мира Си [ENTITY_PRECISION_RECALL].
+• То, как макросы вроде 0xFFFFFFFF << (32 - префикс) формируют маску в памяти [ENTITY_PRECISION_RECALL].
+Я на связи и готов разбирать любые строчки, битовые операции или структуры WinAPI, которые вызовут у вас вопросы. Как будете готовы — выкладывайте их сюда!
+
+честно сказать, особо не вникал, пробежал глазами. Это надо каждую функцию по справочнику прокомментировать - тогда будет всё ясно. Пока этого достаточно. Но есть вопросы. У меня включены две карты: с кабелем и вай-фай. В выводе только один адрес. Ещё вопрос. Если минимум две карты, активные, - должно быть шлюза: один по умолчанию для всех сетей, другой для определённых сетей в виде маршрута. Соответственно для большего количества сетевых карт их адреса и шлюзы (для маршрутов) увеличиваются в количестве. Насколько реально получить дополнительные адреса и шлюзы? Получить дополнительные адреса мне кажется не проблема. Получить шлюзы - читать маршруты.
+
+Вы абсолютно правы в своих рассуждениях. Вы затронули фундаментальную проблему маршрутизации в операционных системах при наличии нескольких сетевых интерфейсов (Multi-homing).
+Давайте разберем оба ваших вопроса: почему сейчас вывелась только одна карта и как правильно вытащить всю картину мира, включая таблицы маршрутизации.
+
+Вопрос 1: Почему вывелась только одна карта (кабель или Wi-Fi)?
+
+Посмотрите на самую последнюю строчку логики в цикле вашего LocalConfigProvider:
+cpp
+// Нашли основной активный адаптер — выходим
+if (!config.ip_address.empty()) break; // <-- ВОТ ОН, ТОРМОЗ!
+Используйте код с осторожностью.
+Ваша структура LocalNetworkConfig сейчас спроектирована так, что она может хранить в себе только одну строку IP, один шлюз и один DHCP. Из-за этого break на первой же активной карте (например, на кабеле Ethernet) функция прекращает работу, а Wi-Fi адаптер просто игнорируется, хотя WinAPI честно прочитал его из системы.
+
+Как это исправить?
+
+Точно так же, как мы делали в DnsResolver или TcpScanner — перевести структуру на коллекции (вектора). Функция должна возвращать std::vector<LocalNetworkConfig>, где каждый элемент вектора — это отдельная физическая карта (интерфейс) со своим собственным IP, своей маской подсети и своим шлюзом.
+
+Вопрос 2: Как получить дополнительные шлюзы и маршруты?
+
+Вы абсолютно правы: шлюз по умолчанию (Default Gateway, маршрут 0.0.0.0/0) у операционной системы обычно один (или несколько с разной метрикой — приоритетом, например, кабель приоритетнее Wi-Fi). Но для специфичных промышленных сетей администраторы вручную прописывают статические маршруты (например: «в подсеть контроллеров 10.10.x.x ходить через шлюз 192.168.0.254»).
+Чистый GetAdaptersAddresses умеет выводить шлюзы по умолчанию для конкретного адаптера через поле FirstGatewayAddress, но он ничего не знает про кастомные статические маршруты (например, добавленные через команду route add).
+Чтобы получить полную карту шлюзов и маршрутов в Windows, нужно использовать другую функцию из того же IP Helper API — GetIpForwardTable2 (или её старый аналог GetIpForwardTable).
+
+Как устроена таблица маршрутизации в Windows API?
+
+Функция GetIpForwardTable2 возвращает структуру MIB_IPFORWARD_TABLE2, которая содержит массив всех маршрутов в системе. Каждый маршрут (MIB_IPFORWARD_ROW2) содержит:
+1. DestinationPrefix — целевая сеть (например, 10.10.0.0/16).
+2. NextHop — адрес шлюза, через который туда надо идти (например, 192.168.0.254).
+3. InterfaceLuid / InterfaceIndex — ID сетевой карты, к которой привязан этот маршрут.
+4. Metric — приоритет маршрута.
+
+Рекомендация для Оркестратора
+
+Для вашей задачи автоматизации (поиск коммутаторов TFortis через ядро сети) у нас есть два пути:
+1. Путь "Максимум": Написать парсер таблицы маршрутизации через GetIpForwardTable2.
+2. Путь "Практичный" (Рекомендуемый): Переписать LocalConfigProvider, чтобы он возвращал список всех активных адаптеров (убрав break). Если для Wi-Fi и кабеля в Windows прописаны свои шлюзы, GetAdaptersAddresses честно вернет их оба. Наш Оркестратор возьмет эти шлюзы и проверит их оба на наличие SSH-порта — так мы гарантированно найдем Ядро сети, к какому бы адаптеру оно ни было подключено, без сложного парсинга системных таблиц маршрутов.
+Если логика с векторами адаптеров и таблицей маршрутов понятна, как поступим:
+• Модифицируем LocalConfigProvider, чтобы он возвращал вектор всех активных карт (кабель + Wi-Fi) без преждевременного break?
+• Или оставим этот модуль как есть и перейдем к проектированию TcpTraceroute?
+
+лучше модифицировать LocalConfigProvider для возвращения всех активных карт
+
+Отличное решение. Модификация LocalConfigProvider для возврата вектора всех активных карт — это самый надежный способ увидеть всю сеть целиком, не усложняя код парсингом системных таблиц маршрутизации.
+Мы сделаем две вещи:
+1. Изменим структуру LocalNetworkConfig, чтобы она представляла один конкретный интерфейс.
+2. Уберем преждевременный break и перегрузку полей, чтобы функция get_current_config() возвращала std::vector<LocalNetworkConfig> со всеми активными картами (и кабелем, и Wi-Fi).
+
+
+Что изменилось и почему это важно:
+
+1. Никакой потери адаптеров: Убран деструктивный break. Теперь в векторе окажутся и Wi-Fi, и проводная карта, если они обе подняты (OperStatusUp).
+2. Добавлено поле interface_name: Чтобы вы глазами в консоли сразу понимали, где настройки Realtek PCIe (кабель), а где Intel Wireless (Wi-Fi).
+3. Исправлен WinAPI-вызов DHCP: Строка обновлена до pCurrAddresses->Dhcpv4Server.RemoteAddress.lpSockaddr для 100% совместимости с Microsoft SDK.
+Теперь Оркестратор получит полный массив отправных точек для сканирования каждой доступной подсети.
+Если логика расширения на вектор карт понятна, переходим к следующему этапу:
+• Начнем разбирать архитектуру и теорию модуля TcpTraceroute (асинхронный трейс)?
+• Или вы хотите сначала скомпилировать и протестировать этот обновленный вывод?
+
+работает! Выводит два адаптера с понятными именами и со всеми адресами. Может тогда уж доделать парсинг маршрутов. Хотя бы получить эти маршруты. Этого уже будет достаточно. В таблице же есть привязка к интерфейсу
+
+Отличные новости! Здорово, что LocalConfigProvider теперь видит всю систему целиком.
+Раз вы решили идти до конца и сделать систему максимально надежной для сложных промышленных сетей, давайте допишем парсинг таблицы маршрутизации Windows.
+Вы абсолютно правы: в системной таблице каждый маршрут жестко привязан к конкретному интерфейсу через его индекс (InterfaceIndex или InterfaceLuid). Наш Оркестратор сможет сопоставить эти данные и понять: «Ага, подсеть контроллеров 10.10.x.x доступна именно через Wi-Fi карту, а не через кабель, и идти туда надо через кастомный шлюз!»
+
+Как устроена функция GetIpForwardTable2
+
+Мы будем использовать современную функцию GetIpForwardTable2 (из той же iphlpapi.dll).
+1. Она выделяет память под таблицу автоматически.
+2. Возвращает указатель на структуру MIB_IPFORWARD_TABLE2.
+3. Внутри этой структуры лежит массив строк Table. Каждая строка (MIB_IPFORWARD_ROW2) описывает один маршрут.
+4. После окончания работы мы обязаны вызвать функцию FreeMibTable, чтобы вернуть память операционной системе.
+
+Шаг 1: Добавляем структуру маршрута
+
+Добавим в наш заголовочный файл структуру, в которую будем сохранять чистые данные:
+
+
+Как связать адаптеры и маршруты? (Поле InterfaceIndex)
+
+Чтобы вы увидели, как красиво связываются адаптеры и маршруты через их системные индексы, нам нужно сделать одну маленькую деталь: добавить сохранение индекса адаптера в структуру LocalNetworkConfig.
+1. Добавим поле в LocalNetworkConfig:
+
 
 
  */
@@ -386,7 +690,7 @@ asio::ip::unicast::ttl ttl_option(current_ttl); socket.set_option(ttl_option);
 
 
 //nslookup
-#if 1
+#if 0
 
 #include <iostream>
 #include <boost/asio.hpp>
@@ -428,20 +732,16 @@ public:
 
     /**
      * @brief Обратный поиск: определяет доменное имя по его IP-адресу (Reverse Lookup)
+     * // ОПТИМИЗИРОВАНО: Обратный поиск (Системный адрес -> Все имена хоста)
      */
-    asio::awaitable<std::string> resolve_ip_to_name(const std::string& ip_address) {
+    asio::awaitable<std::vector<std::string>> resolve_ip_to_names(const asio::ip::address& address) {
+        std::vector<std::string> resolved_names;
         asio::ip::tcp::resolver resolver(executor_);
         boost::system::error_code ec;
 
-        try {
-            // Преобразуем строку в системный адрес IPv4/IPv6
-            boost::system::error_code addr_ec;
-            auto address = asio::ip::make_address(ip_address, addr_ec);
+        try
+        {
 
-            if (addr_ec) {
-                std::cerr << "[DNS] [!] Невалидный IP-адрес: " << ip_address << "\n";
-                co_return "";
-            }
 
             // Создаем endpoint. Порт 0, он не важен для DNS PTR-запроса
             asio::ip::tcp::endpoint endpoint(address, 0);
@@ -449,45 +749,57 @@ public:
             // Передаем endpoint. Asio понимает, что нужен обратный PTR-запрос
             auto results = co_await resolver.async_resolve(endpoint, asio::redirect_error(asio::use_awaitable, ec));
 
-            if (!ec) {
-                // Извлекаем имя хоста через безопасный перебор первого элемента
-                for (const auto& entry : results) {
-                    co_return entry.host_name(); // Возвращаем первое найденное имя
+            if (!ec)
+            {
+                // ТЕПЕРЬ СОБИРАЕМ ВСЕ ИМЕНА БЕЗ ПРЕЖДЕВРЕМЕННОГО ВЫХОДА
+                for (const auto &entry: results)
+                {
+                    resolved_names.push_back(entry.host_name());
                 }
-            } else {
-                std::cerr << "[DNS] [!] Обратный поиск не дал результатов для " << ip_address << ": " << ec.message() << "\n";
-            }
+            }else {
+                      std::cerr << "[DNS] [!] Обратный поиск не дал результатов для " << address << ": "
+                              << ec.message() << "\n";
+                }
+                //co_return resolved_names;
+
         }
         catch (const std::exception& e) {
             std::cerr << "[DNS] [!] Ошибка выполнения обратного поиска: " << e.what() << "\n";
         }
 
-        co_return "";
+        co_return resolved_names;
     }
 
     /**
      * @brief Автоматический nslookup: сам определяет тип строки (IP или имя) и выводит результат
      */
+    // Главный метод автоматического определения
     asio::awaitable<void> resolve(const std::string& input) {
         boost::system::error_code ec;
 
-        // Пытаемся распарсить строку как IP. Если ошибок нет — это IP-адрес
-        asio::ip::make_address(input, ec);
+        // 1. Парсим адрес один раз в корневом методе
+        auto address = asio::ip::make_address(input, ec);
 
         if (!ec) {
             std::cout << "[nslookup] Запрос определен как IP-адрес. Запуск Reverse DNS...\n";
-            std::string name = co_await resolve_ip_to_name(input);
-            if (!name.empty()) {
-                std::cout << "  [+] Результат: " << input << " -> " << name << "\n\n";
+            // Передаем уже готовый объект адреса
+            auto names = co_await resolve_ip_to_names(address);
+
+            if (!names.empty()) {
+                std::cout << "  [+] Результаты (Имена) для IP " << input << ":\n";
+                for (const auto& name : names) {
+                    std::cout << "    -> " << name << "\n";
+                }
+                std::cout << "\n";
             } else {
-                std::cout << "  [-] Результат: Для IP " << input << " имя в DNS не найдено.\n\n";
+                std::cout << "  [-] Результат: Для IP " << input << " имен в DNS не найдено.\n\n";
             }
         }
         else {
             std::cout << "[nslookup] Запрос определен как имя хоста. Запуск Forward DNS...\n";
             auto ips = co_await resolve_name_to_ips(input);
             if (!ips.empty()) {
-                std::cout << "  [+] Результаты для '" << input << "':\n";
+                std::cout << "  [+] Результаты (IP) для '" << input << "':\n";
                 for (const auto& ip : ips) {
                     std::cout << "    -> " << ip << "\n";
                 }
