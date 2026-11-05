@@ -1,1133 +1,663 @@
-//Выводит только Host Name, DNS Servers
+//LocalNetworkConfig
 #if 0
-//
-// Link with IPHlpAPI.lib
-//
+#ifdef _WIN32
 #include <winsock2.h>
 #include <iphlpapi.h>
-#include <stdio.h>
-#include <windows.h>
 #pragma comment(lib, "IPHLPAPI.lib")
-
-#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
-#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
-
-/* Note: could also use malloc() and free() */
-
-//int __cdecl main()
-int main()
-{
-
-    FIXED_INFO *pFixedInfo;
-    ULONG ulOutBufLen;
-    DWORD dwRetVal;
-    IP_ADDR_STRING *pIPAddr;
-
-    pFixedInfo = (FIXED_INFO *) MALLOC(sizeof (FIXED_INFO));
-    if (pFixedInfo == NULL) {
-        printf("Error allocating memory needed to call GetNetworkParams\n");
-        return 1;
-    }
-    ulOutBufLen = sizeof (FIXED_INFO);
-
-// Make an initial call to GetAdaptersInfo to get
-// the necessary size into the ulOutBufLen variable
-    if (GetNetworkParams(pFixedInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
-        FREE(pFixedInfo);
-        pFixedInfo = (FIXED_INFO *) MALLOC(ulOutBufLen);
-        if (pFixedInfo == NULL) {
-            printf("Error allocating memory needed to call GetNetworkParams\n");
-            return 1;
-        }
-    }
-
-    if (dwRetVal = GetNetworkParams(pFixedInfo, &ulOutBufLen) == NO_ERROR) {
-
-        printf("Host Name: %s\n", pFixedInfo->HostName);
-        printf("Domain Name: %s\n", pFixedInfo->DomainName);
-
-        printf("DNS Servers:\n");
-        printf("\t%s\n", pFixedInfo->DnsServerList.IpAddress.String);
-
-        pIPAddr = pFixedInfo->DnsServerList.Next;
-        while (pIPAddr) {
-            printf("\t%s\n", pIPAddr->IpAddress.String);
-            pIPAddr = pIPAddr->Next;
-        }
-
-        printf("Node Type: ");
-        switch (pFixedInfo->NodeType) {
-            case BROADCAST_NODETYPE:
-                printf("Broadcast node\n");
-                break;
-            case PEER_TO_PEER_NODETYPE:
-                printf("Peer to Peer node\n");
-                break;
-            case MIXED_NODETYPE:
-                printf("Mixed node\n");
-                break;
-            case HYBRID_NODETYPE:
-                printf("Hybrid node\n");
-                break;
-            default:
-                printf("Unknown node type %0lx\n", pFixedInfo->NodeType);
-                break;
-        }
-
-        printf("DHCP scope name: %s\n", pFixedInfo->ScopeId);
-
-        if (pFixedInfo->EnableRouting)
-            printf("Routing: enabled\n");
-        else
-            printf("Routing: disabled\n");
-
-        if (pFixedInfo->EnableProxy)
-            printf("ARP proxy: enabled\n");
-        else
-            printf("ARP Proxy: disabled\n");
-
-        if (pFixedInfo->EnableDns)
-            printf("DNS: enabled\n");
-        else
-            printf("DNS: disabled\n");
-
-    } else {
-        printf("GetNetworkParams failed with error: %d\n", dwRetVal);
-        return 1;
-    }
-
-    if (pFixedInfo)
-        FREE(pFixedInfo);
-
-    return 0;
-}
 #endif
 
+struct LocalNetworkConfig {
+    std::string ip_address;
+    std::string subnet_mask;
+    std::string gateway;
+    std::string dhcp_server;
+    std::vector<std::string> dns_servers;
+};
 
+/**
+ * @brief Модуль сбора сетевых настроек текущего компьютера
+ */
+class LocalConfigProvider {
+public:
+    static LocalNetworkConfig get_current_config() {
+        LocalNetworkConfig config;
+#ifdef _WIN32
+        ULONG outBufLen = 15000; // Рекомендуемый размер буфера для WinAPI
+        std::vector<BYTE> buffer(outBufLen);
+        PIP_ADAPTER_ADDRESSES pAddresses = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.data());
 
-//Выводит непонятное
-#if 0
-#include <winsock2.h>
-#include <iphlpapi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <iostream>
+        // Запрашиваем адреса, шлюзы и DNS-серверы
+        ULONG flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_INCLUDE_PREFIX;
+        ULONG dwRetVal = GetAdaptersAddresses(AF_INET, flags, NULL, pAddresses, &outBufLen);
 
-// Link with Iphlpapi.lib
-#pragma comment(lib, "IPHLPAPI.lib")
-
-#define WORKING_BUFFER_SIZE 15000
-#define MAX_TRIES 3
-
-#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
-#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
-
-/* Note: could also use malloc() and free() */
-
-int __cdecl main(int argc, char **argv)
-{
-
-    /* Declare and initialize variables */
-
-    DWORD dwRetVal = 0;
-
-    unsigned int i = 0;
-
-    // Set the flags to pass to GetAdaptersAddresses
-    ULONG flags = GAA_FLAG_INCLUDE_PREFIX;
-
-    // default to unspecified address family (both)
-    ULONG family = AF_UNSPEC;
-
-    LPVOID lpMsgBuf = NULL;
-
-    PIP_ADAPTER_ADDRESSES pAddresses = NULL;
-    ULONG outBufLen = 0;
-    ULONG Iterations = 0;
-
-    PIP_ADAPTER_ADDRESSES pCurrAddresses = NULL;
-    PIP_ADAPTER_UNICAST_ADDRESS pUnicast = NULL;
-    PIP_ADAPTER_ANYCAST_ADDRESS pAnycast = NULL;
-    PIP_ADAPTER_MULTICAST_ADDRESS pMulticast = NULL;
-    IP_ADAPTER_DNS_SERVER_ADDRESS *pDnServer = NULL;
-    IP_ADAPTER_PREFIX *pPrefix = NULL;
-
-    if (argc != 2) {
-        printf(" Usage: getadapteraddresses family\n");
-        printf("        getadapteraddresses 4 (for IPv4)\n");
-        printf("        getadapteraddresses 6 (for IPv6)\n");
-        printf("        getadapteraddresses A (for both IPv4 and IPv6)\n");
-        exit(1);
-    }
-
-    if (atoi(argv[1]) == 4)
-        family = AF_INET;
-    else if (atoi(argv[1]) == 6)
-        family = AF_INET6;
-
-    printf("Calling GetAdaptersAddresses function with family = ");
-    if (family == AF_INET)
-        printf("AF_INET\n");
-    if (family == AF_INET6)
-        printf("AF_INET6\n");
-    if (family == AF_UNSPEC)
-        printf("AF_UNSPEC\n\n");
-
-    // Allocate a 15 KB buffer to start with.
-    outBufLen = WORKING_BUFFER_SIZE;
-
-    do {
-
-        pAddresses = (IP_ADAPTER_ADDRESSES *) MALLOC(outBufLen);
-        if (pAddresses == NULL) {
-            printf
-                    ("Memory allocation failed for IP_ADAPTER_ADDRESSES struct\n");
-            exit(1);
-        }
-
-        dwRetVal =
-                GetAdaptersAddresses(family, flags, NULL, pAddresses, &outBufLen);
-
-        if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
-            FREE(pAddresses);
-            pAddresses = NULL;
-        } else {
-            break;
-        }
-
-        Iterations++;
-
-    } while ((dwRetVal == ERROR_BUFFER_OVERFLOW) && (Iterations < MAX_TRIES));
-
-    if (dwRetVal == NO_ERROR) {
-        // If successful, output some information from the data we received
-        pCurrAddresses = pAddresses;
-        while (pCurrAddresses) {
-            printf("\tLength of the IP_ADAPTER_ADDRESS struct: %ld\n",
-                   pCurrAddresses->Length);
-            printf("\tIfIndex (IPv4 interface): %u\n", pCurrAddresses->IfIndex);
-            printf("\tAdapter name: %s\n", pCurrAddresses->AdapterName);
-
-            pUnicast = pCurrAddresses->FirstUnicastAddress;
-            if (pUnicast != NULL) {
-                for (i = 0; pUnicast != NULL; i++)
-                    pUnicast = pUnicast->Next;
-                printf("\tNumber of Unicast Addresses: %d\n", i);
-            } else
-                printf("\tNo Unicast Addresses\n");
-
-            pAnycast = pCurrAddresses->FirstAnycastAddress;
-            if (pAnycast) {
-                for (i = 0; pAnycast != NULL; i++)
-                    pAnycast = pAnycast->Next;
-                printf("\tNumber of Anycast Addresses: %d\n", i);
-            } else
-                printf("\tNo Anycast Addresses\n");
-
-            pMulticast = pCurrAddresses->FirstMulticastAddress;
-            if (pMulticast) {
-                for (i = 0; pMulticast != NULL; i++)
-                    pMulticast = pMulticast->Next;
-                printf("\tNumber of Multicast Addresses: %d\n", i);
-            } else
-                printf("\tNo Multicast Addresses\n");
-
-            pDnServer = pCurrAddresses->FirstDnsServerAddress;
-            if (pDnServer) {
-                for (i = 0; pDnServer != NULL; i++)
-                    pDnServer = pDnServer->Next;
-                printf("\tNumber of DNS Server Addresses: %d\n", i);
-            } else
-                printf("\tNo DNS Server Addresses\n");
-
-            printf("\tDNS Suffix: %wS\n", pCurrAddresses->DnsSuffix);
-
-            printf("\tDescription: %wS\n", pCurrAddresses->Description);
-            printf("\tFriendly name: %wS\n", pCurrAddresses->FriendlyName);
-
-            if (pCurrAddresses->PhysicalAddressLength != 0) {
-                printf("\tPhysical address: ");
-                for (i = 0; i < (int) pCurrAddresses->PhysicalAddressLength;
-                     i++) {
-                    if (i == (pCurrAddresses->PhysicalAddressLength - 1))
-                        printf("%.2X\n",
-                               (int) pCurrAddresses->PhysicalAddress[i]);
-                    else
-                        printf("%.2X-",
-                               (int) pCurrAddresses->PhysicalAddress[i]);
-                }
-            }
-            printf("\tFlags: %ld\n", pCurrAddresses->Flags);
-            printf("\tMtu: %lu\n", pCurrAddresses->Mtu);
-            printf("\tIfType: %ld\n", pCurrAddresses->IfType);
-            printf("\tOperStatus: %ld\n", pCurrAddresses->OperStatus);
-            printf("\tIpv6IfIndex (IPv6 interface): %u\n",
-                   pCurrAddresses->Ipv6IfIndex);
-            printf("\tZoneIndices (hex): ");
-            for (i = 0; i < 16; i++)
-                printf("%lx ", pCurrAddresses->ZoneIndices[i]);
-            printf("\n");
-
-            printf("\tTransmit link speed: %I64u\n", pCurrAddresses->TransmitLinkSpeed);
-            printf("\tReceive link speed: %I64u\n", pCurrAddresses->ReceiveLinkSpeed);
-
-            pPrefix = pCurrAddresses->FirstPrefix;
-            if (pPrefix) {
-                for (i = 0; pPrefix != NULL; i++)
-                    pPrefix = pPrefix->Next;
-                printf("\tNumber of IP Adapter Prefix entries: %d\n", i);
-            } else
-                printf("\tNumber of IP Adapter Prefix entries: 0\n");
-
-            printf("\n");
-
-            pCurrAddresses = pCurrAddresses->Next;
-        }
-    } else {
-        printf("Call to GetAdaptersAddresses failed with error: %d\n",
-               dwRetVal);
-        if (dwRetVal == ERROR_NO_DATA)
-            printf("\tNo addresses were found for the requested parameters\n");
-        else {
-
-            if (FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                              FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                              NULL, dwRetVal, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                    // Default language
-                              (LPTSTR) & lpMsgBuf, 0, NULL)) {
-                printf("\tError: %s", lpMsgBuf);
-                LocalFree(lpMsgBuf);
-                if (pAddresses)
-                    FREE(pAddresses);
-                exit(1);
-            }
-        }
-    }
-
-    if (pAddresses) {
-        FREE(pAddresses);
-    }
-
-    return 0;
-}
-#endif
-
-
-
-//Выводит IP Address, IP Mask, Gateway, DHCP Server
-#if 0
-#include <winsock2.h>
-#include <iphlpapi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#pragma comment(lib, "IPHLPAPI.lib")
-
-#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
-#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
-
-/* Note: could also use malloc() and free() */
-
-int __cdecl main()
-{
-
-    /* Declare and initialize variables */
-
-// It is possible for an adapter to have multiple
-// IPv4 addresses, gateways, and secondary WINS servers
-// assigned to the adapter.
-//
-// Note that this sample code only prints out the
-// first entry for the IP address/mask, and gateway, and
-// the primary and secondary WINS server for each adapter.
-
-    PIP_ADAPTER_INFO pAdapterInfo;
-    PIP_ADAPTER_INFO pAdapter = NULL;
-    DWORD dwRetVal = 0;
-    UINT i;
-
-/* variables used to print DHCP time info */
-    struct tm newtime;
-    char buffer[32];
-    errno_t error;
-
-    ULONG ulOutBufLen = sizeof (IP_ADAPTER_INFO);
-    pAdapterInfo = (IP_ADAPTER_INFO *) MALLOC(sizeof (IP_ADAPTER_INFO));
-    if (pAdapterInfo == NULL) {
-        printf("Error allocating memory needed to call GetAdaptersinfo\n");
-        return 1;
-    }
-// Make an initial call to GetAdaptersInfo to get
-// the necessary size into the ulOutBufLen variable
-    if (GetAdaptersInfo(pAdapterInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
-        FREE(pAdapterInfo);
-        pAdapterInfo = (IP_ADAPTER_INFO *) MALLOC(ulOutBufLen);
-        if (pAdapterInfo == NULL) {
-            printf("Error allocating memory needed to call GetAdaptersinfo\n");
-            return 1;
-        }
-    }
-
-    if ((dwRetVal = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen)) == NO_ERROR) {
-        pAdapter = pAdapterInfo;
-        while (pAdapter) {
-            printf("\tComboIndex: \t%d\n", pAdapter->ComboIndex);
-            printf("\tAdapter Name: \t%s\n", pAdapter->AdapterName);
-            printf("\tAdapter Desc: \t%s\n", pAdapter->Description);
-            printf("\tAdapter Addr: \t");
-            for (i = 0; i < pAdapter->AddressLength; i++) {
-                if (i == (pAdapter->AddressLength - 1))
-                    printf("%.2X\n", (int) pAdapter->Address[i]);
-                else
-                    printf("%.2X-", (int) pAdapter->Address[i]);
-            }
-            printf("\tIndex: \t%d\n", pAdapter->Index);
-            printf("\tType: \t");
-            switch (pAdapter->Type) {
-                case MIB_IF_TYPE_OTHER:
-                    printf("Other\n");
-                    break;
-                case MIB_IF_TYPE_ETHERNET:
-                    printf("Ethernet\n");
-                    break;
-                case MIB_IF_TYPE_TOKENRING:
-                    printf("Token Ring\n");
-                    break;
-                case MIB_IF_TYPE_FDDI:
-                    printf("FDDI\n");
-                    break;
-                case MIB_IF_TYPE_PPP:
-                    printf("PPP\n");
-                    break;
-                case MIB_IF_TYPE_LOOPBACK:
-                    printf("Loopback\n");
-                    break;
-                case MIB_IF_TYPE_SLIP:
-                    printf("Slip\n");
-                    break;
-                default:
-                    printf("Unknown type %ld\n", pAdapter->Type);
-                    break;
-            }
-
-            printf("\tIP Address: \t%s\n",
-                   pAdapter->IpAddressList.IpAddress.String);
-            printf("\tIP Mask: \t%s\n", pAdapter->IpAddressList.IpMask.String);
-
-            printf("\tGateway: \t%s\n", pAdapter->GatewayList.IpAddress.String);
-            printf("\t***\n");
-
-            if (pAdapter->DhcpEnabled) {
-                printf("\tDHCP Enabled: Yes\n");
-                printf("\t  DHCP Server: \t%s\n",
-                       pAdapter->DhcpServer.IpAddress.String);
-
-                printf("\t  Lease Obtained: ");
-                /* Display local time */
-                error = _localtime32_s(&newtime, (__time32_t*) &pAdapter->LeaseObtained);
-                if (error)
-                    printf("Invalid Argument to _localtime32_s\n");
-                else {
-                    // Convert to an ASCII representation
-                    error = asctime_s(buffer, 32, &newtime);
-                    if (error)
-                        printf("Invalid Argument to asctime_s\n");
-                    else
-                        /* asctime_s returns the string terminated by \n\0 */
-                        printf("%s", buffer);
+        if (dwRetVal == NO_ERROR) {
+            // Итерируемся по сетевым адаптерам
+            for (PIP_ADAPTER_ADDRESSES pCurrAddresses = pAddresses; pCurrAddresses != NULL; pCurrAddresses = pCurrAddresses->Next) {
+                // Нам нужны только активные интерфейсы (Ethernet/Wi-Fi), у которых есть шлюз
+                if (pCurrAddresses->OperStatus != IfOperStatusUp || pCurrAddresses->FirstGatewayAddress == NULL) {
+                    continue;
                 }
 
-                printf("\t  Lease Expires:  ");
-                error = _localtime32_s(&newtime, (__time32_t*) &pAdapter->LeaseExpires);
-                if (error)
-                    printf("Invalid Argument to _localtime32_s\n");
-                else {
-                    // Convert to an ASCII representation
-                    error = asctime_s(buffer, 32, &newtime);
-                    if (error)
-                        printf("Invalid Argument to asctime_s\n");
-                    else
-                        /* asctime_s returns the string terminated by \n\0 */
-                        printf("%s", buffer);
-                }
-            } else
-                printf("\tDHCP Enabled: No\n");
+                // 1. Получаем IP и маску (извлекаем первый IPv4 адрес интерфейса)
+                for (PIP_ADAPTER_UNICAST_ADDRESS pUnicast = pCurrAddresses->FirstUnicastAddress; pUnicast != NULL; pUnicast = pUnicast->Next) {
+                    if (pUnicast->Address.lpSockaddr->sa_family == AF_INET) {
+                        sockaddr_in* sa_in = reinterpret_cast<sockaddr_in*>(pUnicast->Address.lpSockaddr);
+                        config.ip_address = inet_ntoa(sa_in->sin_addr);
 
-            if (pAdapter->HaveWins) {
-                printf("\tHave Wins: Yes\n");
-                printf("\t  Primary Wins Server:    %s\n",
-                       pAdapter->PrimaryWinsServer.IpAddress.String);
-                printf("\t  Secondary Wins Server:  %s\n",
-                       pAdapter->SecondaryWinsServer.IpAddress.String);
-            } else
-                printf("\tHave Wins: No\n");
-            pAdapter = pAdapter->Next;
-            printf("\n");
-        }
-    } else {
-        printf("GetAdaptersInfo failed with error: %d\n", dwRetVal);
-
-    }
-    if (pAdapterInfo)
-        FREE(pAdapterInfo);
-
-    return 0;
-}
-#endif
-
-
-
-
-
-
-
-//Tracert, не определяет маршрут
-#if 0
-//TraceRoute.cpp
-/*----------------------------------------------------------
-Function Description:
-         The program simply implements the tracert command function of the Windows operating system,
-         It can output the routing information of IP packets from this machine to the destination host.
------------------------------------------------------------*/
-#include <iostream>
-#include <iomanip>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <stdio.h>
-#include "TraceRoute.h"
-#pragma comment(lib,"ws2_32")
-using namespace std;
-
-int main()
-{
-    while(1)
-    {
-        /*Store IP*/
-        char ipString[100];
-        cout<<"TraceRoute:";
-        scanf("%s",ipString);
-        //char *ipString = "www.baidu.com";
-
-        /*Initialize winsock2 environment*/
-        WSADATA wsa;//A data structure. This structure is used to store the Windows Sockets data returned after the WSAStartup function is called
-        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)//Do the corresponding socket library binding, MAKEWORD(2,2) means use WINSOCK2 version
-        {
-            cerr << "\nFailed to initialize the WinSock2 DLL\n"<< "error code: "<< WSAGetLastError() << endl;//Cerr is usually used to output error messages and other output content that does not belong to normal logic
-            return -1;
-        }
-
-        /*Convert command line parameters to IP address*/
-        u_long ulDestIP = inet_addr(ipString);//Convert a dotted decimal IP into a long integer number (u_long type)
-
-        //cout<<"Test————"<<"Long integer number"<<ulDestIP<<endl;
-        if (ulDestIP == INADDR_NONE)//INADDR_NONE is a macro definition, representing an invalid IP address for IpAddress.
-        {
-            //Resolve by domain name when the conversion is unsuccessful
-            hostent* pHostent = gethostbyname(ipString);//Returns a pointer to the hostent structure containing the host name and address information corresponding to the given host name
-            if (pHostent)
-            {
-                ulDestIP = (*(in_addr*)pHostent->h_addr).s_addr;//in_addr is used to represent a 32-bit IPv4 address. /cout<<"Test————"<<"ip address"<<ulDestIP< <endl;
-
-                //Output screen information
-                cout << "\nTracing route to " << ipString
-                     << "[" << inet_ntoa(*(in_addr*)(&ulDestIP)) << "]"//Convert the network address into a "." dotted string format
-                     << "with a maximum of" << DEF_MAX_HOP << "hops.\n" << endl;//DEF_MAX_HOP maximum number of hops
-            }
-            else //Failed to resolve the host name
-            {
-                cerr << "\nCould not resolve the host name " << ipString << '\n'
-                     << "error code: " << WSAGetLastError() << endl;
-                WSACleanup();//Terminate the use of Winsock 2 DLL (Ws2_32.dll)
-                return -1;
-            }
-        }
-        else
-        {
-            //Output screen information
-            cout << "Tracing route to " << ipString
-                 << " with a maximum of " << DEF_MAX_HOP << " hops." << endl;
-        }
-        //Fill the destination Socket address
-//struct sockaddr_in Lewis;
-        // Lewis.sin_family = AF_INET;//Indicates the address type. For communication based on the TCP/IP transmission protocol, the value can only be AF_INET;
-        // Lewis.sin_port = htons(80);//Indicates the port number, for example: 21 or 80
-        // Lewis.sin_addr.s_addr = inet_addr("202.96.134.133");//represents a 32-bit IP address
-        // memset(Lewis.sin_zero,0,sizeof(Lewis.sin_zero));//means padding byte
-
-        sockaddr_in destSockAddr;//The address used to process network communications
-        ZeroMemory(&destSockAddr, sizeof(sockaddr_in));//Use 0 to fill a memory area
-        destSockAddr.sin_family = AF_INET;//sin_family;//Address family protocol cluster AF_INET (TCP/IP-IPv4)
-        destSockAddr.sin_addr.s_addr = ulDestIP;//s_addr 32-bit IPv4 address
-        //Create Raw Socket using ICMP protocol
-        SOCKET sockRaw = WSASocket(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL, 0, WSA_FLAG_OVERLAPPED);//Socket type: raw socket, IPPROTO_ICMP indicates that the ICMP header is constructed by the program, iFlags: socket property description
-        if (sockRaw == INVALID_SOCKET)//Invalid socket
-        {
-            cerr << "\nFailed to create a raw socket\n"
-                 << "error code: " << WSAGetLastError() << endl;
-            WSACleanup();
-            return -1;
-        }
-        //Set port properties
-        int iTimeout = DEF_ICMP_TIMEOUT;//3000ms
-        //cout<<"Test————"<<"TIMEOUT:"<<iTimeout<<endl;
-        if (setsockopt(sockRaw, SOL_SOCKET, SO_RCVTIMEO, (char*)&iTimeout, sizeof(iTimeout)) == SOCKET_ERROR)
-            //Set the options associated with a socket. Options may exist in the multi-layer protocol. In order to operate the socket layer options, the value of the layer should be specified as SOL_SOCKET
-            //The socket to be set or get the option, the protocol layer where the option is located, the name of the option that needs to be accessed (the operation of the socket automatically has a timeout), points to the buffer containing the new option value, and the length of the current option
-        {
-            cerr << "\nFailed to set recv timeout\n"
-                 << "error code: " << WSAGetLastError() << endl;
-            closesocket(sockRaw);
-            WSACleanup();
-            return -1;
-        }
-        //Create ICMP packet sending buffer and receiving buffer
-        char IcmpSendBuf[sizeof(ICMP_HEADER)+DEF_ICMP_DATA_SIZE];
-        memset(IcmpSendBuf, 0, sizeof(IcmpSendBuf));
-        char IcmpRecvBuf[MAX_ICMP_PACKET_SIZE];
-        memset(IcmpRecvBuf, 0, sizeof(IcmpRecvBuf));
-        //Fill the ICMP packet to be sent (header and data part)
-        ICMP_HEADER* pIcmpHeader = (ICMP_HEADER*)IcmpSendBuf;
-        pIcmpHeader->type = ICMP_ECHO_REQUEST;
-        pIcmpHeader->code = 0;
-        pIcmpHeader->id = (USHORT)GetCurrentProcessId();
-        memset(IcmpSendBuf+sizeof(ICMP_HEADER),'E', DEF_ICMP_DATA_SIZE);//Data is partially filled
-        //Start to detect routing
-        DECODE_RESULT stDecodeResult;
-        BOOL bReachDestHost = FALSE;
-        USHORT usSeqNo = 0;
-        int iTTL = 1;
-        int iMaxHop = DEF_MAX_HOP;
-        while (!bReachDestHost && iMaxHop--)
-        {
-            //Set the ttl field of the IP data header
-            setsockopt(sockRaw, IPPROTO_IP, IP_TTL, (char*)&iTTL, sizeof(iTTL));//raw socket with 0 (IPPROTO_IP). Used to receive any IP data packet. The checksum and protocol analysis are completed by the program itself.
-            //Output the current number of hops as the routing information serial number
-            cout << setw(3) << iTTL << flush; //setw(3) sets the field width, cout<<flush means that the content of the buffer is sent to cout immediately, and the output buffer is flushed.
-            //Fill in the remaining fields of the ICMP datagram
-            ((ICMP_HEADER*)IcmpSendBuf)->cksum = 0;
-            ((ICMP_HEADER*)IcmpSendBuf)->seq = htons(usSeqNo++);//Convert the unsigned short host byte order to the network byte order, exchange the high and low bits of a number, (e.g.: 12 34- -> 34 12)
-            ((ICMP_HEADER*)IcmpSendBuf)->cksum = GenerateChecksum((USHORT*)IcmpSendBuf, sizeof(ICMP_HEADER)+DEF_ICMP_DATA_SIZE);
-
-            //Record the serial number and current time
-            stDecodeResult.usSeqNo = ((ICMP_HEADER*)IcmpSendBuf)->seq;
-            stDecodeResult.dwRoundTripTime = GetTickCount();//Returns the number of milliseconds that have elapsed since the operating system was started, and is often used to determine the execution time of a method
-
-            //Send ICMP EchoRequest datagram
-            if (sendto(sockRaw, IcmpSendBuf, sizeof(IcmpSendBuf), 0, (sockaddr*)&destSockAddr, sizeof(destSockAddr)) == SOCKET_ERROR)
-            {
-                //If the destination host is unreachable, exit directly
-                if (WSAGetLastError() == WSAEHOSTUNREACH)
-                    cout << '/t' << "Destination host unreachable.\n"<< "\nTrace complete.\n" << endl;
-                closesocket(sockRaw);
-                WSACleanup();
-                return 0;
-            }
-            //Receive ICMP EchoReply datagram
-            //Because the received datagram may not be the datagram expected by the program, it needs to be received in a loop until the required data is received or timeout
-            sockaddr_in from;
-            int iFromLen = sizeof(from);
-            int iReadDataLen;
-            while (1)
-            {
-                //Wait for data to arrive
-                iReadDataLen = recvfrom(sockRaw, IcmpRecvBuf, MAX_ICMP_PACKET_SIZE, 0, (sockaddr*)&from, &iFromLen);
-                if (iReadDataLen != SOCKET_ERROR) //A data packet arrives
-                {
-                    //The decoded data packet, if the decoding is correct, jump out of the receiving loop and send the next EchoRequest packet
-                    if (DecodeIcmpResponse(IcmpRecvBuf, iReadDataLen, stDecodeResult))
-                    {
-                        if (stDecodeResult.dwIPaddr.s_addr == destSockAddr.sin_addr.s_addr)
-                            bReachDestHost = TRUE;
-                        cout <<'\t' << inet_ntoa(stDecodeResult.dwIPaddr) << endl;//Convert the network address into a "." dotted string format
+                        // Вычисляем маску на основе длины префикса (например, префикс 24 -> 255.255.255.0)
+                        ULONG mask = (0xFFFFFFFF << (32 - pUnicast->OnLinkPrefixLength)) & 0xFFFFFFFF;
+                        in_addr mask_addr;
+                        mask_addr.S_un.S_addr = htonl(mask);
+                        config.subnet_mask = inet_ntoa(mask_addr);
                         break;
                     }
                 }
-                else if (WSAGetLastError() == WSAETIMEDOUT) //Receive timeout, print asterisk
-                {
-                    cout << setw(9) << '*' << '\t' << "Request timed out." << endl;
-                    break;
+
+                // 2. Получаем основной шлюз (Gateway)
+                if (pCurrAddresses->FirstGatewayAddress && pCurrAddresses->FirstGatewayAddress->Address.lpSockaddr->sa_family == AF_INET) {
+                    sockaddr_in* sa_in = reinterpret_cast<sockaddr_in*>(pCurrAddresses->FirstGatewayAddress->Address.lpSockaddr);
+                    config.gateway = inet_ntoa(sa_in->sin_addr);
                 }
-                else
-                {
-                    cerr << "\nFailed to call recvfrom\n"
-                         << "error code: " << WSAGetLastError() << endl;
-                    closesocket(sockRaw);
-                    WSACleanup();
-                    return -1;
+
+                // 3. Получаем DNS-серверы
+                for (PIP_ADAPTER_DNS_SERVER_ADDRESS pDns = pCurrAddresses->FirstDnsServerAddress; pDns != NULL; pDns = pDns->Next) {
+                    if (pDns->Address.lpSockaddr->sa_family == AF_INET) {
+                        sockaddr_in* sa_in = reinterpret_cast<sockaddr_in*>(pDns->Address.lpSockaddr);
+                        config.dns_servers.push_back(inet_ntoa(sa_in->sin_addr));
+                    }
                 }
-            }
-            //TTL value plus 1
-            iTTL++;
-            //cout<<"Test————"<<iTTL<<endl;
-        }
-        //Output screen information
-        cout << "\nTrace complete.\n" << endl;
-        closesocket(sockRaw);
-        WSACleanup();
-    }
-    return 0;
 
-}
-/*Generate internet checksum*/
-USHORT GenerateChecksum(USHORT* pBuf, int iSize)// 16
-{
-    unsigned long cksum = 0;//32
-    while (iSize>1)//40
-    {
-        cksum += *pBuf++;
-        iSize -= sizeof(USHORT);
-    }
-    if (iSize)
-        cksum += *(UCHAR*)pBuf;//8
-    //printf("Test——cksum——Test:%x\n",cksum);
-    //printf("Test——cksum>>16——Test:%x\n",cksum>>16);
-    //printf("Test——cksum & 0xffff——Test:%x\n",cksum & 0xffff);
-    cksum = (cksum >> 16) + (cksum & 0xffff);
-    //printf("Test——cksum——Test:%x\n",cksum);
-    //printf("Test——cksum>>16——Test:%x\n",cksum>>16);
-    cksum += (cksum >> 16);
-    //printf("Test——cksum——Test:%x\n",cksum);
-    //printf("Test——(USHORT)(~cksum)——Test:%x\n",(USHORT)(~cksum));
-    return (USHORT)(~cksum);//~ bitwise reverse
-}
+                // 4. Получаем DHCP-сервер (если DHCP включен)
+                if (pCurrAddresses->Dhcpv4Enabled && pCurrAddresses->Dhcpv4Server.lpSockaddr) {
+                    sockaddr_in* sa_in = reinterpret_cast<sockaddr_in*>(pCurrAddresses->Dhcpv4Server.lpSockaddr);
+                    config.dhcp_server = inet_ntoa(sa_in->sin_addr);
+                }
 
-/*Decoded datagram*/
-BOOL DecodeIcmpResponse(char* pBuf, int iPacketSize, DECODE_RESULT& stDecodeResult)
-{
-    //Check the validity of the datagram size
-    IP_HEADER* pIpHdr = (IP_HEADER*)pBuf;
-    int iIpHdrLen = pIpHdr->hdr_len * 4;//unit 4 bytes
-    if (iPacketSize < (int)(iIpHdrLen+sizeof(ICMP_HEADER)))
-        return FALSE;
-    //Check the id field and serial number according to the ICMP packet type to determine whether it is the Icmp packet that the program should receive
-    ICMP_HEADER* pIcmpHdr = (ICMP_HEADER*)(pBuf+iIpHdrLen);
-    USHORT usID, usSquNo;//ICMP header identifier and serial number
-    if (pIcmpHdr->type == ICMP_ECHO_REPLY)
-    {
-        usID = pIcmpHdr->id;
-        usSquNo = pIcmpHdr->seq;
-    }
-    else if(pIcmpHdr->type == ICMP_TIMEOUT)
-    {
-        char* pInnerIpHdr = pBuf+iIpHdrLen+sizeof(ICMP_HEADER); //IP header in the payload
-        int iInnerIPHdrLen = ((IP_HEADER*)pInnerIpHdr)->hdr_len * 4;//IP header length in the payload
-        ICMP_HEADER* pInnerIcmpHdr = (ICMP_HEADER*)(pInnerIpHdr+iInnerIPHdrLen);//ICMP header in the payload
-        usID = pInnerIcmpHdr->id;
-        usSquNo = pInnerIcmpHdr->seq;
-    }
-    else
-        return FALSE;
-    if (usID != (USHORT)GetCurrentProcessId() || usSquNo !=stDecodeResult.usSeqNo)
-        return FALSE;
-    //Process the ICMP datagram received correctly
-    if (pIcmpHdr->type == ICMP_ECHO_REPLY ||
-        pIcmpHdr->type == ICMP_TIMEOUT)
-    {
-        //Return the decoding result
-        stDecodeResult.dwIPaddr.s_addr = pIpHdr->sourceIP;
-        stDecodeResult.dwRoundTripTime = GetTickCount() - stDecodeResult.dwRoundTripTime;
-        //Print screen information
-        if (stDecodeResult.dwRoundTripTime)
-            cout << setw(6) << stDecodeResult.dwRoundTripTime << " ms" << flush;
-        else
-            cout << setw(6) << "<1" << " ms" << flush;
-        return TRUE;
-    }
-    return FALSE;
-}
-/*_############################################################################
-  _##
-  _##  test_app.cpp
-  _##
-  _##  SNMP++ v3.4
-  _##  -----------------------------------------------
-  _##  Copyright (c) 2001-2021 Jochen Katz, Frank Fock
-  _##
-  _##  This software is based on SNMP++2.6 from Hewlett Packard:
-  _##
-  _##    Copyright (c) 1996
-  _##    Hewlett-Packard Company
-  _##
-  _##  ATTENTION: USE OF THIS SOFTWARE IS SUBJECT TO THE FOLLOWING TERMS.
-  _##  Permission to use, copy, modify, distribute and/or sell this software
-  _##  and/or its documentation is hereby granted without fee. User agrees
-  _##  to display the above copyright notice and this license notice in all
-  _##  copies of the software and any documentation of the software. User
-  _##  agrees to assume all liability for the use of the software;
-  _##  Hewlett-Packard, Frank Fock, and Jochen Katz make no representations
-  _##  about the suitability of this software for any purpose. It is provided
-  _##  "AS-IS" without warranty of any kind, either express or implied. User
-  _##  hereby grants a royalty-free license to any and all derivatives based
-  _##  upon this software code base.
-  _##
-  _##########################################################################*/
-
-#include <libsnmp.h>
-
-#include "snmp_pp/snmp_pp.h"
-
-#ifdef WIN32
-#define strcasecmp _stricmp
-#endif
-#endif
-
-
-
-//Определяет адрес по имени
-#if 0
-#include "DNSResolver.h"
-#include "ConfigManager.h"
-#include <iostream>
-
-using namespace std;
-
-//@brief Main function that runs the DNS lookup tool.
-int main(int argc, char* argv[])
-{
-    ConfigManager config(argc, argv);
-
-    // Retrieve the domain name from the configuration
-    string domain = config.getConfig("domain");
-    if (domain.empty())
-    {
-        cerr << "Usage: main domain=<domain_name>" << endl;
-        return 1;
-    }
-
-    DNSResolver dnsResolver;
-    auto results = dnsResolver.resolveDomain(domain);  // Perform the domain resolution and store the results
-    dnsResolver.logResults(domain, results);   // Log the IP's for the resolved domain
-
-    return 0;
-}
-//#ifdef SNMP_PP_NAMESPACE
-//using namespace Snmp_pp;
-//#endif
-
-// default request oids
-//#define NUM_SYS_VBS	6
-//#define sysDescr	"1.3.6.1.2.1.1.1.0"
-//#define sysObjectID	"1.3.6.1.2.1.1.2.0"
-//#define sysUpTime	"1.3.6.1.2.1.1.3.0"
-//#define sysContact	"1.3.6.1.2.1.1.4.0"
-//#define sysName		"1.3.6.1.2.1.1.5.0"
-//#define sysLocation	"1.3.6.1.2.1.1.6.0"
-//#define sysServices	"1.3.6.1.2.1.1.7.0" // not all agents support this...
-
-// default notification oid
-//#define coldStart	"1.3.6.1.6.3.1.1.4.3.0.1"
-#endif
-
-
-
-//Определяет адрес по имени и наоборот
-#if 0
-#define _WIN32_WINNT 0x0600  // Ensure Windows 7+ API availability
-
-#include <iostream>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <vector>
-#include <string>
-#include <stdexcept>
-#include <limits>
-#include <memory>
-
-// Links the Winsock2 library for networking functions
-#pragma comment(lib, "Ws2_32.lib")
-
-// RAII wrapper to initialize and clean up Winsock automatically
-class WinsockInitializer
-{
-public:
-    // Constructor
-    WinsockInitializer()
-    {
-        // Starts Winsock v2.2; throws an error if initialization fails
-        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-        {
-            throw std::runtime_error("WSAStartup failed.");
-        }
-    }
-
-    // Destructor
-    ~WinsockInitializer()
-    {
-        WSACleanup();
-    }
-
-private:
-    // Structure to hold Winsock data
-    WSADATA wsaData;
-};
-
-// This class provides methods to resolve domain names to IP addresses and perform reverse DNS lookups
-// It uses the Winsock API to fetch network information
-class DNSResolver
-{
-public:
-
-    /**
-     * Resolves the given domain name to its IP addresses.
-     * @param[in] domain The domain name to resolve (e.g., "google.com").
-     * @param[in] family Address family (AF_INET for IPv4, AF_INET6 for IPv6, AF_UNSPEC for both).
-     */
-    void resolveDNS(const std::string& domain, int family = AF_UNSPEC)
-    {
-        std::cout << "\nResolving: " << domain << "\n";
-        struct addrinfo hints = {}, *res = nullptr;
-
-        // Specifies whether to resolve for IPv4, IPv6, or both
-        hints.ai_family = family;
-
-        // Sets the socket type to TCP
-        hints.ai_socktype = SOCK_STREAM;
-
-        // Perform DNS lookup
-        int status = getaddrinfo(domain.c_str(), nullptr, &hints, &res);
-        if (status != 0)
-        {
-            std::cerr << "Error: Could not resolve " << domain << ". " << gai_strerror(status) << "\n";
-            return;
-        }
-
-        // Automatically frees addrinfo to prevent memory leaks and ensure exception safety
-        std::unique_ptr<struct addrinfo, decltype(&freeaddrinfo)> res_ptr(res, freeaddrinfo);
-
-        // Buffer to store the resolved IP address
-        char ipStr[NI_MAXHOST];
-
-        std::cout << "Addresses:\n";
-
-        // Iterate through all resolved addresses and print them
-        for (struct addrinfo* p = res_ptr.get(); p != nullptr; p = p->ai_next)
-        {
-            // Variable to hold the length of the IP string
-            DWORD ipStrLen = NI_MAXHOST;
-
-            // Convert the resolved address into a human-readable format
-            if (WSAAddressToStringA(p->ai_addr, p->ai_addrlen, nullptr, ipStr, &ipStrLen) == 0)
-            {
-                std::cout << "  " << ipStr << "\n";
-            }
-            else
-            {
-                std::cerr << "Warning: Failed to convert address. Skipping...\n";
+                // Нашли основной активный адаптер — выходим
+                if (!config.ip_address.empty()) break;
             }
         }
-    }
-
-    /**
-     * Perform a reverse DNS lookup to find the hostname for a given IP address.
-     * @param[in] ip The IPv4 address to resolve.
-     */
-    void reverseDNSLookup(const std::string& ip)
-    {
-        std::cout << "\nReverse Lookup: " << ip << "\n";
-
-        // Structure to store the IP address information
-        struct sockaddr_in sa;
-
-        // Specify that the address belongs to the IPv4 family
-        sa.sin_family = AF_INET;
-
-        // Convert the IP string to a network address format
-        sa.sin_addr.s_addr = inet_addr(ip.c_str());
-
-        // Validate if the IP format is correct
-        if (sa.sin_addr.s_addr == INADDR_NONE)
-        {
-            std::cerr << "Invalid IP format. Please enter a valid IPv4 address.\n";
-            return;
-        }
-
-        char host[NI_MAXHOST];
-
-        // Perform reverse DNS lookup to get the domain name
-        if (getnameinfo((struct sockaddr*)&sa, sizeof(sa), host, NI_MAXHOST, nullptr, 0, NI_NAMEREQD) == 0)
-        {
-            std::cout << "Resolved Hostname: " << host << "\n";
-        }
-        else
-        {
-            std::cerr << "Reverse lookup failed for " << ip << "\n";
-        }
-    }
-
-    /**
-     * Resolves multiple domain names sequentially.
-     * @param[in] domains A list of domain names to resolve.
-     * @param[in] family Address family (IPv4, IPv6, or both).
-     */
-    void resolveMultipleDomains(const std::vector<std::string>& domains, int family = AF_UNSPEC)
-    {
-        for (const auto& domain : domains)
-        {
-            resolveDNS(domain, family);
-        }
+#else
+        // Заглушка для Linux (использует утилиты или netlink в реальном коде)
+        config.ip_address = "192.168.1.10";
+        config.subnet_mask = "255.255.255.0";
+        config.gateway = "192.168.1.1";
+#endif
+        return config;
     }
 };
 
-// This class handles user input, ensuring valid numerical input and choices
-// It provides methods for selecting an option and choosing an address family
-class UserInputHandler
-{
-public:
+asio::awaitable<void> run_app_workflow() {
+    auto exec = co_await asio::this_coro::executor;
 
-    /**
-     * Prompts the user to enter a numerical choice.
-     * Ensures valid integer input and prevents non-numeric or invalid characters.
-     *
-     * @return The validated integer choice entered by the user.
-     */
-    int getUserChoice()
-    {
-        int choice;
-        while (true)
-        {
-            // Display Options and Prompt the user for input
-            try
-            {
-                std::cin >> choice;
-
-                if (std::cin.fail())
-                {
-                    throw std::invalid_argument("Invalid input. Please enter a number.");
-                }
-
-                // Clear any remaining input in the buffer to prevent unintended behavior
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                return choice;
-            }
-                // Handle invalid input by resetting the input stream and displaying an error message
-            catch (const std::exception& e)
-            {
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cerr << e.what() << "\n";
-            }
-        }
+    // --- Тест 1: Локальная конфигурация ---
+    std::cout << "=== СБОР ЛОКАЛЬНОЙ КОНФИГУРАЦИИ ===\n";
+    LocalNetworkConfig local_cfg = LocalConfigProvider::get_current_config();
+    std::cout << "Мой IP:       " << local_cfg.ip_address << "\n"
+              << "Маска:        " << local_cfg.subnet_mask << "\n"
+              << "Шлюз (GW):    " << local_cfg.gateway << "\n"
+              << "DHCP-Сервер:  " << local_cfg.dhcp_server << "\n";
+    for(const auto& dns : local_cfg.dns_servers) {
+        std::cout << "DNS-Сервер:   " << dns << "\n";
     }
+    std::cout << "\n";
 
-    /**
-     * Prompts the user to select an address family for network communication.
-     * Valid options:
-     *   1 - IPv4 only
-     *   2 - IPv6 only
-     *   3 - Both (default)
-     *
-     * @return The corresponding address family (AF_INET for IPv4, AF_INET6 for IPv6, AF_UNSPEC for both).
-     */
-    int getFamilyChoice()
-    {
-        int family;
-        while (true)
-        {
-            // Display options and prompt the user to select an address family
-            try
-            {
-                std::cout << "Select Address Family:\n";
-                std::cout << "1. IPv4 only\n";
-                std::cout << "2. IPv6 only\n";
-                std::cout << "3. Both (default)\n";
-                std::cout << "Enter choice: ";
-                std::cin >> family;
 
-                if (std::cin.fail() || (family < 1 || family > 3))
-                {
-                    throw std::invalid_argument("Invalid input. Enter 1, 2, or 3.");
-                }
-
-                // Clear any extra input and return the corresponding address family
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                if (family == 1) return AF_INET;
-                if (family == 2) return AF_INET6;
-                return AF_UNSPEC;
-
-            }
-                // Handle invalid input by resetting the input stream and displaying an error message
-            catch (const std::exception& e)
-            {
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cerr << e.what() << "\n";
-            }
-        }
-    }
-};
+}
 
 int main()
 {
-    try
-    {
-        WinsockInitializer winsock;  // RAII ensures WSACleanup is called
-        DNSResolver resolver;
-        UserInputHandler inputHandler;
 
-        // Display menu options for the user
-        std::cout << "1. Resolve Domain\n";
-        std::cout << "2. Reverse DNS Lookup\n";
-        std::cout << "3. Resolve Multiple Domains\n";
-        std::cout << "Choose an option: ";
+    int main(int argc, char* argv[]) {
 
-        // Get user choice and validate input
-        int choice = inputHandler.getUserChoice();
+#ifdef _WIN32
+        // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+        // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
+        SetConsoleOutputCP(65001);
 
-        // Get address family preference (IPv4, IPv6, or both)
-        if (choice == 1)
-        {
-            // Resolve a single domain name
-            std::string domain;
-            std::cout << "Enter domain: ";
-            std::getline(std::cin, domain);
+        // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+        // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
+        SetConsoleCP(65001);
 
-            // Get address family preference (IPv4, IPv6, or both)
-            int family = inputHandler.getFamilyChoice();
-            resolver.resolveDNS(domain, family);
+        // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+        // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
+        if (hOut != INVALID_HANDLE_VALUE) {
+            // Создаем переменную для хранения текущего флага-маски режимов консоли.
+            DWORD dwMode = 0;
+            // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+            // Если функция вернула true (успех), значит, мы можем их модифицировать.
+            if (GetConsoleMode(hOut, &dwMode)) {
+                // Включаем аппаратную обработку виртуального терминала + обработку вывода
+                // Включаем обработку ANSI-последовательностей (Esc-кодов).
+                // Благодаря этому консоль Windows аппаратно понимает команды сервера
+                // о цвете текста, очистке экрана и перемещении курсора (история команд).
+                dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                // Включаем обработку служебных управляющих символов вывода.
+                // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+                // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
+                dwMode |= ENABLE_PROCESSED_OUTPUT;
+                // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+                // С этого момента консоль начинает работать в режиме умного терминала.
+                SetConsoleMode(hOut, dwMode);
+            }
+            else {
+                std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+            }
         }
-        else if (choice == 2)
-        {
-            // Perform reverse DNS lookup for an IP address
-            std::string ip;
-            std::cout << "Enter IP address: ";
-            std::getline(std::cin, ip);
-            resolver.reverseDNSLookup(ip);
+        else {
+            // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+            std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                      << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
         }
-        else if (choice == 3)
-        {
-            // Resolve multiple domain names
-            int count;
-            std::cout << "Enter number of domains: ";
-            count = inputHandler.getUserChoice();
 
-            std::vector<std::string> domains(count);
+#endif
 
-            // Collect domain names from the user
-            for (int i = 0; i < count; ++i)
-            {
-                std::cout << "Enter domain " << (i + 1) << ": ";
-                std::getline(std::cin, domains[i]);
+        // Проверяем аргументы командной строки
+        /*if (argc != 2) {
+            std::cerr << "Использование: tcp_scanner.exe [IP-Адрес]\n";
+            std::cerr << "Пример: tcp_scanner.exe 192.168.0.1\n";
+            return 1;
+        }
+
+        std::string target_ip = argv[1];*/
+
+        try {
+            // Создаем главный асинхронный движок
+            asio::io_context io_ctx;
+
+            // Вбрасываем нашу корневую корутину в планировщик io_context
+            asio::co_spawn(io_ctx, run_app_workflow(), asio::detached);
+
+            // Запускаем цикл обработки событий.
+            // Поток main заблокируется здесь и будет асинхронно обрабатывать пакеты
+            std::cout << "[Main] Запуск планировщика Boost.Asio..." << std::endl;
+            io_ctx.run();
+            std::cout << "[Main] Работа завершена штатно." << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Fatal Error]: " << e.what() << std::endl;
+            return 1;
+        }
+
+        return 0;
+    }
+
+}
+
+/*
+ *
+Модуль 2: Локальная конфигурация (IP, маска, шлюз, DNS, DHCP)
+
+Получение настроек сети (особенно шлюза, DHCP и DNS) сильно зависит от операционной системы. Boost.Asio предоставляет кроссплатформенный класс asio::ip::network_v4, с помощью которого можно вытащить IP и маску локальных интерфейсов, но для получения шлюза, DNS и DHCP требуются системные API (Windows API / Linux netlink).
+Ниже представлена реализация для Windows (так как в вашем main используется SetConsoleOutputCP). Она использует функцию GetAdaptersAddresses, которая возвращает абсолютно всю конфигурацию интерфейсов в системе.
+
+
+ */
+#endif
+
+
+
+//Tracert
+#if 0
+/**
+ * @brief Модуль асинхронной трассировки маршрута (Аналог tracert на базе TCP)
+ */
+class TcpTraceroute {
+public:
+    explicit TcpTraceroute(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Запускает трассировку до целевого хоста
+     * @param target_ip IP-адрес назначения
+     * @param port Порт для отправки SYN (лучше использовать заведомо известный порт, например 80, 443 или любой открытый сканером)
+     * @param max_hops Максимальное количество шагов (обычно 30)
+     */
+    asio::awaitable<void> trace(std::string target_ip, uint16_t port, int max_hops = 30) {
+        std::cout << "[Tracert] Трассировка маршрута до " << target_ip << ":" << port << " (макс. " << max_hops << " улов):\n";
+
+        asio::ip::tcp::endpoint target_ep(asio::ip::make_address(target_ip), port);
+
+        for (int ttl = 1; ttl <= max_hops; ++ttl) {
+            asio::ip::tcp::socket socket(executor_);
+            asio::steady_timer timer(executor_);
+
+            try {
+                // Открываем сокет для протокола IPv4 до выполнения коннекта
+                socket.open(asio::ip::tcp::v4());
+
+                // КЛЮЧЕВАЯ СТРОКА: Ограничиваем время жизни пакета в шагах маршрутизаторов
+                asio::ip::unicast::ttl ttl_option(ttl);
+                socket.set_option(ttl_option);
+
+                timer.expires_after(std::chrono::milliseconds(500)); // Полусекундный таймаут на хоп
+                boost::system::error_code connect_ec = asio::error::would_block;
+
+                // Запускаем гонку подключения
+                auto race_result = co_await (
+                    socket.async_connect(target_ep, asio::redirect_error(asio::use_awaitable, connect_ec)) ||
+                    timer.async_wait(asio::use_awaitable)
+                );
+
+                boost::system::error_code close_ec;
+                socket.close(close_ec);
+
+                // Оцениваем результат хопа
+                if (race_result.index() == 0) {
+                    // Если мы получили ЛЮБОЙ ответ от сети (успех коннекта или сброс RST) — значит, мы ДОСТИГЛИ цели!
+                    // Ошибки вроде "Connection refused" (RST) или успех говорят о том, что пакет долетел до финала.
+                    if (!connect_ec || connect_ec == asio::error::connection_refused) {
+                        std::cout << "  " << ttl << ".\t" << target_ip << " [Цель достигнута]\n";
+                        break;
+                    }
+                    // Если вернулась специфическая ошибка сети или хоста (ICMP Time Exceeded трансформируется ОС в коды ошибок)
+                    else {
+                        // Примечание: Разные ОС транслируют ICMP Time Exceeded по-разному.
+                        // Windows часто прячет адрес промежуточного узла при TCP-коннекте.
+                        // Для вывода точного IP транзитного узла без raw-сокетов не обойтись,
+                        // но этот метод гарантированно показывает *дистанцию* (количество хопов) до цели.
+                        std::cout << "  " << ttl << ".\tУзел ответил кодом: " << connect_ec.message() << "\n";
+                    }
+                } else {
+                    // Таймер сработал первым (узел промолчал)
+                    std::cout << "  " << ttl << ".\t*\t*\t* [Таймаут]\n";
+                }
+            }
+            catch (const std::exception& e) {
+                std::cout << "  " << ttl << ".\t[Ошибка сокета: " << e.what() << "]\n";
+            }
+        }
+        std::cout << "[Tracert] Трассировка завершена.\n\n";
+    }
+
+private:
+    asio::any_io_executor executor_;
+};
+
+asio::awaitable<void> run_app_workflow() {
+    auto exec = co_await asio::this_coro::executor;
+
+
+    // --- Тест 3: TRACERT ---
+    std::cout << "=== АСИНХРОННЫЙ TCP TRACEROUTE ===\n";
+    TcpTraceroute tracer(exec);
+    if (!ips.empty()) {
+        // Берем первый разрешенный IP из nslookup и трассируем до 80-го веб-порта
+        co_await tracer.trace(ips[0], 80, 15);
+    }
+}
+
+int main()
+{
+
+    int main(int argc, char* argv[]) {
+
+#ifdef _WIN32
+        // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+        // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
+        SetConsoleOutputCP(65001);
+
+        // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+        // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
+        SetConsoleCP(65001);
+
+        // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+        // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
+        if (hOut != INVALID_HANDLE_VALUE) {
+            // Создаем переменную для хранения текущего флага-маски режимов консоли.
+            DWORD dwMode = 0;
+            // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+            // Если функция вернула true (успех), значит, мы можем их модифицировать.
+            if (GetConsoleMode(hOut, &dwMode)) {
+                // Включаем аппаратную обработку виртуального терминала + обработку вывода
+                // Включаем обработку ANSI-последовательностей (Esc-кодов).
+                // Благодаря этому консоль Windows аппаратно понимает команды сервера
+                // о цвете текста, очистке экрана и перемещении курсора (история команд).
+                dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                // Включаем обработку служебных управляющих символов вывода.
+                // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+                // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
+                dwMode |= ENABLE_PROCESSED_OUTPUT;
+                // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+                // С этого момента консоль начинает работать в режиме умного терминала.
+                SetConsoleMode(hOut, dwMode);
+            }
+            else {
+                std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+            }
+        }
+        else {
+            // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+            std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                      << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
+        }
+
+#endif
+
+        // Проверяем аргументы командной строки
+        /*if (argc != 2) {
+            std::cerr << "Использование: tcp_scanner.exe [IP-Адрес]\n";
+            std::cerr << "Пример: tcp_scanner.exe 192.168.0.1\n";
+            return 1;
+        }
+
+        std::string target_ip = argv[1];*/
+
+        try {
+            // Создаем главный асинхронный движок
+            asio::io_context io_ctx;
+
+            // Вбрасываем нашу корневую корутину в планировщик io_context
+            asio::co_spawn(io_ctx, run_app_workflow(), asio::detached);
+
+            // Запускаем цикл обработки событий.
+            // Поток main заблокируется здесь и будет асинхронно обрабатывать пакеты
+            std::cout << "[Main] Запуск планировщика Boost.Asio..." << std::endl;
+            io_ctx.run();
+            std::cout << "[Main] Работа завершена штатно." << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Fatal Error]: " << e.what() << std::endl;
+            return 1;
+        }
+
+        return 0;
+    }
+
+}
+
+/*
+ *
+Модуль 3: Асинхронный Трейсерут (tracert / traceroute)
+
+Написание полноценного tracert на «сырых» ICMP сокетах (raw sockets) требует прав администратора (root/admin) в любой ОС и жестко блокируется современными брандмауэрами.
+Однако в индустрии есть изящный, современный и абсолютно безопасный трюк — TCP Traceroute. Вместо отправки ICMP-пинов мы делаем async_connect на любой открытый порт цели (например, веб-порт 80 или 443), но принудительно выставляем сокету параметр TTL (Time To Live), последовательно увеличивая его от 1 до 30.
+• Когда TTL падает до 0, промежуточный маршрутизатор обязан вернуть нам ICMP-пакет Time Exceeded.
+• В Boost.Asio мы можем задавать TTL для TCP сокета штатными средствами:
+asio::ip::unicast::ttl ttl_option(current_ttl); socket.set_option(ttl_option);
+
+
+ */
+#endif
+
+
+
+//nslookup
+#if 1
+
+#include <iostream>
+#include <boost/asio.hpp>
+
+namespace asio = boost::asio;
+
+/**
+ * @brief Модуль асинхронного разрешения DNS-имен (Полноценный аналог nslookup)
+ */
+/**
+ * @brief Модуль асинхронного разрешения DNS-имен (Полноценный аналог nslookup)
+ */
+class DnsResolver {
+public:
+    explicit DnsResolver(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Прямой поиск: разрешает имя хоста в список IP-адресов (Forward Lookup)
+     */
+    asio::awaitable<std::vector<std::string>> resolve_name_to_ips(const std::string& hostname) {
+        std::vector<std::string> resolved_ips;
+        asio::ip::tcp::resolver resolver(executor_);
+        boost::system::error_code ec;
+
+        // Запрашиваем IP-адреса для хоста
+        auto results = co_await resolver.async_resolve(hostname, "", asio::redirect_error(asio::use_awaitable, ec));
+
+        if (!ec) {
+            // Безопасный обход результатов через range-based for (обходит баги итераторов Boost)
+            for (const auto& entry : results) {
+                resolved_ips.push_back(entry.endpoint().address().to_string());
+            }
+        } else {
+            std::cerr << "[DNS] [!] Ошибка прямого поиска для '" << hostname << "': " << ec.message() << "\n";
+        }
+
+        co_return resolved_ips;
+    }
+
+    /**
+     * @brief Обратный поиск: определяет доменное имя по его IP-адресу (Reverse Lookup)
+     */
+    asio::awaitable<std::string> resolve_ip_to_name(const std::string& ip_address) {
+        asio::ip::tcp::resolver resolver(executor_);
+        boost::system::error_code ec;
+
+        try {
+            // Преобразуем строку в системный адрес IPv4/IPv6
+            boost::system::error_code addr_ec;
+            auto address = asio::ip::make_address(ip_address, addr_ec);
+
+            if (addr_ec) {
+                std::cerr << "[DNS] [!] Невалидный IP-адрес: " << ip_address << "\n";
+                co_return "";
             }
 
-            // Get address family preference
-            int family = inputHandler.getFamilyChoice();
-            resolver.resolveMultipleDomains(domains, family);
+            // Создаем endpoint. Порт 0, он не важен для DNS PTR-запроса
+            asio::ip::tcp::endpoint endpoint(address, 0);
+
+            // Передаем endpoint. Asio понимает, что нужен обратный PTR-запрос
+            auto results = co_await resolver.async_resolve(endpoint, asio::redirect_error(asio::use_awaitable, ec));
+
+            if (!ec) {
+                // Извлекаем имя хоста через безопасный перебор первого элемента
+                for (const auto& entry : results) {
+                    co_return entry.host_name(); // Возвращаем первое найденное имя
+                }
+            } else {
+                std::cerr << "[DNS] [!] Обратный поиск не дал результатов для " << ip_address << ": " << ec.message() << "\n";
+            }
         }
-        else
-        {
-            std::cerr << "Invalid choice. Exiting.\n";
+        catch (const std::exception& e) {
+            std::cerr << "[DNS] [!] Ошибка выполнения обратного поиска: " << e.what() << "\n";
+        }
+
+        co_return "";
+    }
+
+    /**
+     * @brief Автоматический nslookup: сам определяет тип строки (IP или имя) и выводит результат
+     */
+    asio::awaitable<void> resolve(const std::string& input) {
+        boost::system::error_code ec;
+
+        // Пытаемся распарсить строку как IP. Если ошибок нет — это IP-адрес
+        asio::ip::make_address(input, ec);
+
+        if (!ec) {
+            std::cout << "[nslookup] Запрос определен как IP-адрес. Запуск Reverse DNS...\n";
+            std::string name = co_await resolve_ip_to_name(input);
+            if (!name.empty()) {
+                std::cout << "  [+] Результат: " << input << " -> " << name << "\n\n";
+            } else {
+                std::cout << "  [-] Результат: Для IP " << input << " имя в DNS не найдено.\n\n";
+            }
+        }
+        else {
+            std::cout << "[nslookup] Запрос определен как имя хоста. Запуск Forward DNS...\n";
+            auto ips = co_await resolve_name_to_ips(input);
+            if (!ips.empty()) {
+                std::cout << "  [+] Результаты для '" << input << "':\n";
+                for (const auto& ip : ips) {
+                    std::cout << "    -> " << ip << "\n";
+                }
+                std::cout << "\n";
+            } else {
+                std::cout << "  [-] Результат: Имя '" << input << "' не удалось разрешить.\n\n";
+            }
         }
     }
-    catch (const std::exception& e)
+
+private:
+    asio::any_io_executor executor_;
+};
+
+
+
+
+
+
+asio::awaitable<void> run_app_workflow() {
+    auto exec = co_await asio::this_coro::executor;
+    DnsResolver nslookup(exec);
+
+    // --- КЕЙС 1: Прямой поиск (Имя -> IP) ---
+    co_await nslookup.resolve("google.com");
+
+    // --- КЕЙС 2: Обратный поиск (IP -> Имя) ---
+    // ВАЖНО: Для локальных сетей роутеры редко заполняют PTR-записи.
+    // Для гарантированного теста обратного поиска используем публичный DNS-сервер Cloudflare (1.1.1.1) или Google (8.8.8.8)
+    co_await nslookup.resolve("8.8.8.8");
+}
+
+
+int main(int argc, char* argv[])
+{
+#ifdef _WIN32
+    // Устанавливаем кодировку UTF-8 (код 65001) для вывода текста на экран консоли.
+    // Это устраняет кракозябры при чтении русских букв, приходящих от сервера.
+    SetConsoleOutputCP(65001);
+
+    // Устанавливаем кодировку UTF-8 (код 65001) для ввода текста с клавиатуры.
+    // Это гарантирует, что вводимые нами символы кодируются так же, как их ожидает сервер.
+    SetConsoleCP(65001);
+
+    // Получаем низкоуровневый дескриптор (хэндл) стандартного вывода текущей консоли.
+    // Этот хэндл нужен операционной системе, чтобы изменить внутренние настройки экрана.
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    // Проверяем, что хэндл консоли успешно получен и система не вернула ошибку.
+    if (hOut != INVALID_HANDLE_VALUE)
     {
-        // Handle any exceptions thrown during execution
-        std::cerr << "Error: " << e.what() << "\n";
+        // Создаем переменную для хранения текущего флага-маски режимов консоли.
+        DWORD dwMode = 0;
+        // Запрашиваем у Windows текущие настройки консоли и записываем их в dwMode.
+        // Если функция вернула true (успех), значит, мы можем их модифицировать.
+        if (GetConsoleMode(hOut, &dwMode))
+        {
+            // Включаем аппаратную обработку виртуального терминала + обработку вывода
+            // Включаем обработку ANSI-последовательностей (Esc-кодов).
+            // Благодаря этому консоль Windows аппаратно понимает команды сервера
+            // о цвете текста, очистке экрана и перемещении курсора (история команд).
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            // Включаем обработку служебных управляющих символов вывода.
+            // Этот флаг заставляет Windows корректно интерпретировать такие символы,
+            // как Backspace (удаление), перевод строки (\n) и возврат каретки (\r).
+            dwMode |= ENABLE_PROCESSED_OUTPUT;
+            // Записываем обновленную маску режимов обратно в настройки ОС Windows.
+            // С этого момента консоль начинает работать в режиме умного терминала.
+            SetConsoleMode(hOut, dwMode);
+        } else
+        {
+            std::cerr << "[Внимание Windows] Не удалось прочитать режимы консоли. Возможно искажение текста.\n";
+        }
+    } else
+    {
+        // ОБРАБОТКА ОШИБКИ: Сигнализируем, что стандартный вывод недоступен
+        std::cerr << "[Внимание Windows] Стандартный вывод консоли недоступен (INVALID_HANDLE_VALUE).\n"
+                  << "Программа запущена в фоне или вывод перенаправлен в файл.\n";
+    }
+
+#endif
+
+    // Проверяем аргументы командной строки
+    /*if (argc != 2) {
+        std::cerr << "Использование: tcp_scanner.exe [IP-Адрес]\n";
+        std::cerr << "Пример: tcp_scanner.exe 192.168.0.1\n";
+        return 1;
+    }
+
+    std::string target_ip = argv[1];*/
+
+    try
+    {
+        // Создаем главный асинхронный движок
+        asio::io_context io_ctx;
+
+        // Вбрасываем нашу корневую корутину в планировщик io_context
+        asio::co_spawn(io_ctx, run_app_workflow(), asio::detached);
+
+        // Запускаем цикл обработки событий.
+        // Поток main заблокируется здесь и будет асинхронно обрабатывать пакеты
+        std::cout << "[Main] Запуск планировщика Boost.Asio..." << std::endl;
+        io_ctx.run();
+        std::cout << "[Main] Работа завершена штатно." << std::endl;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[Fatal Error]: " << e.what() << std::endl;
+        return 1;
     }
 
     return 0;
 }
+
+
+
+/*
+ *
+Модуль 1: Аналог nslookup (Асинхронный DNS-резолвер)
+
+Для разрешения имен в IP-адреса в Boost.Asio есть встроенный класс asio::ip::tcp::resolver. Он работает асинхронно и позволяет получить весь список IPv4 и IPv6 адресов, привязанных к имени.
+
+Действительно, классический nslookup работает в две стороны: Forward DNS (имя → IP) и Reverse DNS (IP → имя).
+В текущей реализации метод resolver.async_resolve принимает имя хоста и пытается найти его IP. Чтобы заставить его делать обратное преобразование (Reverse Lookup), нам нужно передать ему готовый объект конечной точки (asio::ip::tcp::endpoint) вместо строки с именем, либо использовать специальный перегруженный метод.
+Давайте доведем модуль DnsResolver до абсолютного идеала, разделив его на две четкие асинхронные операции.
+
+Модернизированный DnsResolver (Прямой и Обратный поиск)
+
+В сетевом стеке Boost.Asio для обратного резолвинга достаточно передать в async_resolve валидный объект tcp::endpoint. Порт при этом можно поставить в 0, так как для DNS-службы важен только сам IP-адрес.
+
+
+Разбор механики по полочкам: как это работает изнутри?
+
+1. Как операционная система понимает, что мы ищем имя по IP?
+На низком сетевом уровне для этого используется специальный тип DNS-запроса — PTR (Pointer) запись. Когда вы передаете в async_resolve объект endpoint с IP-адресом (например, 8.8.8.8), Boost.Asio под капотом трансформирует его в реверсивный формат (для IPv4 это будет выглядеть как запрос зоны 8.8.8.8.in-addr.arpa.).
+2. Почему метод возвращает results->host_name()?
+Ответ от DNS-сервера приходит в виде итератора записей. Стрелочка -> (или разыменование) у итератора результатов results в Asio сразу смотрит на первый валидный элемент, у которого мы и забираем текстовое имя хоста.
+
+Объект results — это итерируемый диапазон (range). Метод .begin() возвращает объект публичного типа basic_resolver_results::iterator. У этого итератора перегружен стандартный оператор ->, который предоставляет открытый и безопасный доступ к полям структуры basic_resolver_entry, включая метод .host_name().
+
+
+В чем подвох проверки по первому символу?
+
+1. Имена хостов могут начинаться с цифр: В промышленных сетях имена коммутаторов или серверов часто называют по номерам комнат, этажей или инвентарным номерам (например: 1floor-switch.local, 302-server, 8888.com). Если проверить только первую цифру, программа решит, что 1floor-switch — это IP-адрес, передаст его в обратный поиск и упадет с ошибкой.
+2. IPv6 адреса: Они вообще начинаются с букв (например: fe80::1 или 2001:db8::). Проверка на цифру тут полностью сломается.
+
+Как сделать это правильно и надежно?
+
+Вместо ручного анализа строк, мы задействуем системный метод, который скрыт внутри самого сетевого стека: boost::asio::ip::make_address.
+Этот метод — профессиональный валидатор. Он пытается распарсить строку по строгим правилам сетевых протоколов IPv4 и IPv6.
+• Если строка является валидным IP-адресом (любой версии) — метод отработает успешно.
+• Если строка — это доменное имя (или мусор) — метод выбросит исключение (или вернет код ошибки).
+Давайте объединим обе функции в один универсальный метод resolve (прямо как в настоящем nslookup), который сам поймет, что перед ним:
+
+
+Преимущества такого подхода:
+
+1. 100% надежность: Никакое имя хоста (даже 8888.com или 123-server) не обманет программу. make_address четко знает, как выглядит структура IP.
+2. Готовность к IPv6: Если завтра ваша сеть перейдет на IPv6, этот код продолжит работать без изменений.
+3. Чистый интерфейс: Пользователю (или нашему будущему Оркестратору) больше не нужно думать, какой метод вызывать. Есть одна точка входа.
+
+
+Разбор ошибок, которые мы победили:
+
+1. Проблема с inaccessible / отсутствием .front(): Использование конструкции for (const auto& entry : results) полностью скрывает от нас внутреннее устройство итераторов Boost.Asio. Компилятор видит только чистую структуру entry, у которой публично доступен метод .host_name().
+2. Почему раньше мог не выводиться результат: Если мы передавали в make_address имя хоста без указания переменной ошибки ec (make_address(input)), этот метод при сбое выбрасывал тяжелое C++ исключение std::runtime_error. Корутина падала до того, как переходила в блок прямого поиска. Теперь вызов make_address(input, ec) работает тихо, безопасно и просто возвращает статус.
+
+
+
+ */
 #endif
-
-
 
 
 
@@ -3579,9 +3109,11 @@ asio::awaitable<void> snmp_v3_collection_logic(std::string ip_address) {
 
 
 //Сканер портов
-#if 1
+#if 0
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <boost/asio/ip/network_v4.hpp>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -3592,24 +3124,26 @@ using namespace asio::experimental::awaitable_operators; // Включает о�
 
 // Перечисление для понятного отображения статуса порта
 enum class PortStatus {
-    Open,       // Порт открыт (получен SYN-ACK, соединение установлено)
-    Closed,     // Порт закрыт (получен RST или ICMP ошибка)
-    Filtered    // Порт молчит (таймаут, пакет застрял в Firewall / ACL)
+    Open,       // Порт открыт (получен SYN-ACK, соединение установлено)// SYN-ACK получен -> порт готов к обмену данными
+    Closed,     // Порт закрыт (получен RST или ICMP ошибка)// RST получен -> хост активен, но служба не запущена
+    Filtered    // Порт молчит (таймаут, пакет застрял в Firewall / ACL)// Таймаут/ICMP ошибка -> пакет заблокирован Firewall
 };
 
 class TcpScanner {
 public:
     // Конструктор принимает исполнитель (executor) io_context
+    // Конструктор привязывает сканер к конкретному потоку ввода-вывода (io_context)
     explicit TcpScanner(asio::any_io_executor exec) : executor_(exec) {}
 
     /**
-     * @brief Проверка одного конкретного TCP-порта (Атомарная операция)
+     * @brief Проверка одного конкретного TCP-порта (Атомарная операция). Атомарная проверка одного TCP-порта (низкоуровневая операция)
      * @param ip_address Целевой IP-адрес устройства
      * @param port Номер порта для проверки
      * @param timeout_ms Время ожидания ответа в миллисекундах (для локальных сетей рекомендуется 150-300)
      */
     asio::awaitable<PortStatus> scan_single_port(std::string ip_address, uint16_t port, std::chrono::milliseconds timeout_ms) {
         // На каждую проверку создаем СВЕЖИЙ сокет. Повторно использовать сокет без сброса нельзя.
+        // РЕСУРСЫ: На каждый запрос создается новый сокет. Повторное использование без сброса запрещено ОС.
         asio::ip::tcp::socket socket(executor_);
         asio::steady_timer timer(executor_);
 
@@ -3623,34 +3157,140 @@ public:
 
             // Запускаем асинхронную гонку между подключением сокета и таймером таймаута.
             // asio::redirect_error подавляет выброс C++ исключений на закрытых портах (экономит CPU).
+            // ГОНКА: Ждем, что наступит раньше: системное подключение или таймаут таймера.
+            // redirect_error подавляет тяжелые C++ исключения на закрытых портах, критически экономя CPU.
             auto race_result = co_await (
                     socket.async_connect(target_ep, asio::redirect_error(asio::use_awaitable, connect_ec)) ||
                     timer.async_wait(asio::use_awaitable)
             );
 
+            // Обязательно закрываем сокет, освобождая дескриптор в ОС Windows/Linux!
+            // ОСВОБОЖДЕНИЕ: Принудительно закрываем дескриптор сокета в ОС сразу после завершения гонки.
+            boost::system::error_code close_ec;
+            socket.close(close_ec);
+
             // Индекс 0: Сокет проснулся первым (сеть ответила быстрее, чем прошел таймаут)
+            // АНАЛИЗ: Индекс 0 означает, что сеть ответила быстрее, чем истек таймаут.
             if (race_result.index() == 0) {
-                // Обязательно закрываем сокет, освобождая дескриптор в ОС Windows/Linux!
-                boost::system::error_code close_ec;
-                socket.close(close_ec);
 
                 if (!connect_ec) {
-                    co_return PortStatus::Open; // Ошибок нет -> соединен -> Открыт
+                    co_return PortStatus::Open; // Ошибок нет -> соединен -> Открыт// Соединение успешно установлено
+
                 } else {
-                    co_return PortStatus::Closed; // Пришел сброс (RST) -> Закрыт
+                    co_return PortStatus::Closed; // Пришел сброс (RST) -> Закрыт// Сеть вернула RST пакет
+
                 }
             }
                 // Индекс 1: Первым сработал таймер таймаута (устройство промолчало)
             else {
-                boost::system::error_code close_ec;
-                socket.close(close_ec); // Принудительно разрываем зависшую попытку подключения
-                co_return PortStatus::Filtered;
+                //boost::system::error_code close_ec;
+                //socket.close(close_ec); // Принудительно разрываем зависшую попытку подключения
+                co_return PortStatus::Filtered;// Первым сработал таймер (тишина в сети)
+
             }
         }
         catch (const std::exception&) {
             // На случай невалидного IP-адреса или сбоя инициализации сокета
-            co_return PortStatus::Closed;
+            co_return PortStatus::Closed;// Защита от некорректных IP или системных сбоев сокета
+
         }
+    }
+
+    /**
+     * @brief Сканирование диапазона IP и портов с ограничением конкурентности (Worker Pool). Оркестратор пула воркеров для параллельного сканирования подсети
+     * @param ip_addresses Список целевых IP
+     * @param ports Список портов для проверки каждого IP
+     * @param timeout_ms Таймаут на попытку
+     * @param max_concurrent_workers Максимальное число ОДНОВРЕМЕННЫХ сокетов в сети (размер пула)
+     */
+    asio::awaitable<void> scan_subnet(
+            const std::vector<std::string>& ip_addresses,
+            const std::vector<uint16_t>& ports,
+            std::chrono::milliseconds timeout_ms,
+            size_t max_concurrent_workers)
+    {
+        std::cout << "[Orchestrator] Старт. Задач в очереди: " << ip_addresses.size() * ports.size()
+                  << ". Ограничение конкурентности: " << max_concurrent_workers << " сокетов.\n";
+
+
+        using ScanTask = std::pair<std::string, uint16_t>;
+        // Задаем явную емкость буфера канала, чтобы вместить все задачи
+        size_t total_tasks = ip_addresses.size() * ports.size();
+        // БУФЕР: Создаем канал емкостью под все задачи, чтобы try_send выполнялся мгновенно и без блокировок.
+        asio::experimental::channel<void(boost::system::error_code, ScanTask)> task_channel(executor_, total_tasks);
+
+        // 1. Наполняем канал задачами
+        // НАПОЛНЕНИЕ: Формируем декартово произведение (каждый IP x каждый Порт) и пушим в канал.
+        for (const auto& ip : ip_addresses) {
+            for (uint16_t port : ports) {
+                task_channel.try_send(boost::system::error_code{}, ScanTask{ip, port});
+            }
+        }
+
+        // ВАЖНО: Мы НЕ закрываем канал здесь! Мы закроем его, когда поймем, что задачи кончились,
+        // либо позволим воркерам выгребать их. Но самый надежный способ для Asio Channel —
+        // это закрыть его СРАЗУ ПОСЛЕ наполнения, НО читать пока async_receive возвращает успех,
+        // потому что async_receive умеет выгребать остатки из буфера закрытого канала!
+        // ВАЖНО: Фиксируем очередь. Закрытый канал разрешает воркерам дочитать буфер до конца через async_receive.
+        task_channel.close();
+
+        // 2. Исправленный воркер
+        // ЛЯМБДА ВОРКЕРА: Описывает поведение одного потока внутри пула.
+        auto worker = [&](size_t worker_id) -> asio::awaitable<void> {
+            try {
+                // Бесконечный цикл, выход строго по ошибке закрытия пустого канала
+                for (;;) {// Бесконечный цикл разбора очереди
+                    boost::system::error_code ec;
+
+                    // async_receive вытащит данные из буфера, ДАЖЕ если канал вызвал .close(),
+                    // и вернет ошибку channel_closed ТОЛЬКО когда буфер полностью опустеет.
+                    // Извлекаем задачу. Если буфер пуст И канал закрыт -> вернется channel_closed.
+                    ScanTask task = co_await task_channel.async_receive(asio::redirect_error(asio::use_awaitable, ec));
+
+                    if (ec == asio::experimental::channel_errc::channel_closed) {
+                        break; // Вот теперь это честный выход: буфер пуст, канал закрыт. // Честный выход из пула: задачи полностью исчерпаны
+                    }
+
+                    // Выполняем сканирование
+                    PortStatus status = co_await scan_single_port(task.first, task.second, timeout_ms);
+
+                    if (status == PortStatus::Open) {
+                        std::cout << "  [ Worker " << worker_id << " ] [+] ОТКРЫТ: "
+                                  << task.first << ":" << task.second << " (" << guess_service(task.second) << ")\n";
+                    }
+                }
+            } catch (...) {
+                // Изолируем исключения. // Изолируем непредвиденные сбои воркера, защищая общую нить выполнения
+            }
+            co_return;
+        };
+
+        // 3. Запускаем воркеров через старый добрый барьер из вашей прошлой логики
+        // БАРЬЕР СИНХРОНИЗАЦИИ (Latch): Управляет ожиданием группы асинхронных корутин.
+        auto remaining_workers = std::make_shared<size_t>(max_concurrent_workers);
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        // СПАВН: Разворачиваем пул воркеров в контексте io_context.
+        for (size_t i = 0; i < max_concurrent_workers; ++i) {
+            asio::co_spawn(executor_, [worker, i, remaining_workers, wait_timer]() -> asio::awaitable<void> {
+                co_await worker(i);// Запуск жизненного цикла воркера
+
+                (*remaining_workers)--;
+                if (*remaining_workers == 0) {
+                    wait_timer->cancel(); // Все воркеры завершились — будим оркестратор. // Последний воркер будит главный поток сканера
+                }
+                co_return;
+            }, asio::detached);
+        }
+
+        // Ожидаем, пока все воркеры отстреляются. // ОЖИДАНИЕ: Блокируем корутину оркестратора до тех пор, пока таймер не будет отменен воркерами.
+        if (*remaining_workers > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        std::cout << "[Orchestrator] Сканирование всей подсети успешно завершено.\n\n";
     }
 
     /**
@@ -3665,7 +3305,7 @@ public:
     /**
      * @brief Истинно параллельный опрос вектора портов хоста
      */
-    asio::awaitable<void> scan_host(std::string ip_address, const std::vector<uint16_t>& ports, std::chrono::milliseconds timeout_ms) {
+    /*asio::awaitable<void> scan_host(std::string ip_address, const std::vector<uint16_t>& ports, std::chrono::milliseconds timeout_ms) {
         std::cout << "[Scanner] Начинаем ПАРАЛЛЕЛЬНЫЙ опрос хоста " << ip_address << " по " << ports.size() << " портам...\n";
 
         auto remaining_tasks = std::make_shared<size_t>(ports.size());
@@ -3688,12 +3328,12 @@ public:
         }
 
         std::cout << "[Scanner] Параллельный опрос хоста " << ip_address << " завершен.\n\n";
-    }
+    }*/
 
 private:
 
     // НОВЫЙ МЕТОД: Изолированный рабочий воркер для одного порта
-    asio::awaitable<void> process_port_scan(
+    /*asio::awaitable<void> process_port_scan(
             std::string ip_address,
             uint16_t port,
             std::chrono::milliseconds timeout_ms,
@@ -3713,7 +3353,7 @@ private:
             wait_timer->cancel();
         }
         co_return;
-    }
+    }*/
 
     // Вспомогательный метод для красивого логирования
     std::string guess_service(uint16_t port) {
@@ -3733,22 +3373,59 @@ private:
     asio::any_io_executor executor_;
 };
 
-// Главный рабочий воркфлоу программы, оформленный как корутина
-asio::awaitable<void> run_app_workflow(std::string target_ip) {
-    // Получаем исполнитель (executor) текущей корутины
-    auto exec = co_await asio::this_coro::executor;
+/**
+* @brief Генерирует список IP-адресов на основе CIDR строки подсети. Парсер CIDR масок на базе сетевого стека Boost.Asio
+* @param cidr_str Строка вида "192.168.1.0/24" или "10.0.0.0/16"
+* @return Вектор строк с IP-адресами хостов
+*/
+std::vector<std::string> generate_ips_from_cidr(const std::string& cidr_str) {
+    std::vector<std::string> ips;
+    try {
+        // make_network сама распарсит строку, проверит корректность маски и IP. // Валидация строки и вычисление границ сети силами Boost
+        asio::ip::network_v4 network = asio::ip::make_network_v4(cidr_str);
 
-    // Инициализируем наш сканер
+        // Получаем диапазон валидных хостов в подсети
+        auto host_range = network.hosts();// Возвращает диапазон строго валидных хостов (без .0 и .255)
+
+
+        // Итерируемся по нему. Asio сама переберет адреса от .1 до .254 (для /24)
+        for (const auto& ip : host_range) {
+            ips.push_back(ip.to_string());
+        }
+
+        std::cout << "[Parser] Подсеть " << cidr_str << " успешно распарсена. "
+                  << "Обнаружено возможных хостов: " << ips.size() << "\n";
+    }
+    catch (const boost::system::system_error& e) {
+        std::cerr << "[Parser] [!] Ошибка парсинга CIDR '" << cidr_str << "': " << e.what() << "\n";
+    }
+    return ips;
+}
+
+// Главный рабочий воркфлоу программы, оформленный как корутина
+asio::awaitable<void> run_app_workflow() {
+    auto exec = co_await asio::this_coro::executor;
     TcpScanner scanner(exec);
 
-    // Подготавливаем тестовый вектор портов для проверки
+    // Вводим подсеть в промышленном формате CIDR
+    std::string subnet_cidr = "10.182.16.0/22";
+
+    // Генерируем хосты с помощью Boost.Asio
+    std::vector<std::string> targets = generate_ips_from_cidr(subnet_cidr);
+
+    if (targets.empty()) {
+        std::cerr << "[Main] Список хостов пуст. Завершение работы.\n";
+        co_return;
+    }
+
+    // Набор портов для фингерпринтинга (наш стандартный пул)
     std::vector<uint16_t> target_ports = {22, 23, 80, 135, 445, 3389};
 
-    // Задаем агрессивный, но безопасный таймаут для локальной сети (300 мс)
-    auto timeout = std::chrono::milliseconds(300);
+    // Параметры сканирования
+    auto timeout = std::chrono::milliseconds(200);
+    size_t concurrent_sockets = 64;
 
-    // Запускаем сканирование хоста
-    co_await scanner.scan_host(target_ip, target_ports, timeout);
+    co_await scanner.scan_subnet(targets, target_ports, timeout, concurrent_sockets);
 }
 
 int main(int argc, char* argv[]) {
@@ -3798,20 +3475,20 @@ int main(int argc, char* argv[]) {
 #endif
 
     // Проверяем аргументы командной строки
-    if (argc != 2) {
+    /*if (argc != 2) {
         std::cerr << "Использование: tcp_scanner.exe [IP-Адрес]\n";
         std::cerr << "Пример: tcp_scanner.exe 192.168.0.1\n";
         return 1;
     }
 
-    std::string target_ip = argv[1];
+    std::string target_ip = argv[1];*/
 
     try {
         // Создаем главный асинхронный движок
         asio::io_context io_ctx;
 
         // Вбрасываем нашу корневую корутину в планировщик io_context
-        asio::co_spawn(io_ctx, run_app_workflow(target_ip), asio::detached);
+        asio::co_spawn(io_ctx, run_app_workflow(), asio::detached);
 
         // Запускаем цикл обработки событий.
         // Поток main заблокируется здесь и будет асинхронно обрабатывать пакеты
@@ -4208,6 +3885,210 @@ for (uint16_t port : ports) { // <-- port живет на каждой итер�
 
 В C++20 корутинах, когда вы вызываете функцию process_port_scan(...), компилятор мгновенно (прямо в точке вызова) выделяет под неё фрейм корутины и копирует туда аргументы. Даже если цикл пойдет дальше и переменная port в цикле изменится, внутри запущенной задачи копия порта останется строго неизменной. Дублирование логов исчезнет, а затерявшийся 80-й порт отобразится корректно.
 Замените этот фрагмент в коде, и дублирование гарантированно пропадет.
+
+План на сегодня выглядит логичным развитием системы. Нам нужно решить классическую проблему C10K/C100K в миниатюре: научить сканер «переваривать» подсети (например, /24 или /16), не упираясь в лимиты открытых файловых дескрипторов ОС (ulimit -n) и не забивая сетевой стек пачками полуоткрытых соединений.
+Предлагаю начать с первой задачи: масштабирование на диапазоны IP с батчингом (пакетной обработкой).
+
+Архитектура батчинга для подсетей
+
+Чтобы эффективно сканировать диапазоны, нам нужен асинхронный ограничитель (семафор или конвейер с пулом воркеров). В мире Boost.Asio и корутин C++20 для контроля конкурентности идеально подходит батчинг фиксированного размера или использование asio::experimental::channel (или asio::awaitable_operators для параллельного ожидания).
+Давайте набросаем шаблон функции, которая принимает диапазон IP-адресов и портов, бьет их на батчи (например, по 64 параллельных запроса) и дожидается завершения каждой пачки перед переходом к следующей.
+
+Пример реализации батчинга на co_await
+
+cpp
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <iostream>
+#include <vector>
+
+namespace asio = boost::asio;
+
+// Предположим, это наш отлаженный метод из прошлой сессии
+asio::awaitable<void> process_port_scan(std::string ip, uint16_t port) {
+    // Наша логика с async_connect и redirect_error
+    co_return;
+}
+
+// Корутина для сканирования одного батча (пачки хостов/портов)
+asio::awaitable<void> scan_batch(const std::vector<std::pair<std::string, uint16_t>>& targets) {
+    // Используем executor текущей корутины
+    auto executor = co_await asio::this_coro::executor;
+
+    // Создаем группу корутин внутри батча
+    // Для параллельного ожидания группы в Asio можно использовать разные подходы.
+    // Самый простой для понимания — запустить N корутин через co_spawn и дождаться их завершения.
+
+    // Но так как co_spawn возвращает void (или awaitable, если настроить),
+    // для синхронизации группы часто используют счетчики или барьеры.
+    // Рассмотрим вариант с простейшим пулом воркеров через канал Asio:
+}
+
+Однако более гибкий паттерн для сетевых сканеров — это не жесткие батчи (когда 63 порта уже проверились, а 1 «зависший» тормозит весь батч), а динамический пул воркеров (Паттерн Worker Pool).
+Воркеры непрерывно берут задачи из общего асинхронного канала (очереди). Как только один порт проверен, воркер тут же берет следующий, удерживая планку строго в N одновременных соединений.
+С какого подхода начнем масштабирование?
+• Реализуем жесткий батчинг (разбиение на группы по N хостов, ждем всех, идем дальше) — это проще в отладке.
+• Реализуем динамический пул воркеров через asio::experimental::channel (фиксированное число N активных корутин, которые непрерывно выгребают IP/порты из очереди) — это гораздо быстрее в реальной сети, так как нет просадок из-за медленных хостов.
+
+Отличный, чистый код! Логика синхронизации через remaining_tasks и wait_timer->cancel() сделана очень изящно — вы фактически вручную собрали легковесный барьер синхронизации (Latch).
+Давайте масштабировать этот код на сканирование подсетей/диапазонов IP. Так как вы выбрали путь динамического пула воркеров (Worker Pool), мы не будем плодить тысячи корутин одновременно (что могло бы вызвать отказ ОС выделять сокеты). Вместо этого мы запустим строго фиксированное количество воркеров (например, 32 или 64), которые будут параллельно «выкусывать» задачи из общего списка.
+Для этого идеально подойдет инструмент boost::asio::experimental::channel. Канал — это потокобезопасная асинхронная очередь, встроенная прямо в Asio.
+
+Пошаговый план модернизации
+
+1. Добавим канал (asio::experimental::channel) в качестве очереди задач. Каждая задача — это пара (IP, Port).
+2. Напишем метод scan_subnet, который:
+	• Генерирует список IP-адресов подсети.
+	• Заполняет канал задачами.
+	• Закрывает канал на запись (чтобы воркеры знали, когда работа кончилась).
+	• Запускает N воркеров и асинхронно ждет их завершения.
+Вот как теперь будет выглядеть обновленный класс TcpScanner и функция main.
+
+Модернизированный код сканера (с поддержкой подсетей)
+
+Добавьте заголовочный файл для каналов:
+cpp
+#include <boost/asio/experimental/channel.hpp>
+Используйте код с осторожностью.
+Обновленный класс TcpScanner:
+
+
+Генератор подсети для проверки
+
+Чтобы передать в сканер список IP-адресов подсети (например, 192.168.1.1 – 192.168.1.254), напишем простую вспомогательную функцию для генерации вектора строк.
+
+
+Преимущества этого подхода:
+
+1. Жесткий лимит ресурсов: Сколько бы тысяч IP вы ни передали, в памяти и сети будут крутиться ровно concurrent_sockets задач. Операционная система не выбросит ошибку "Too many open files".
+2. Эффективность по времени: Если 192.168.1.5 завис на брандмауэре (ждет 200мс), остальные 63 воркера продолжают быстро опрашивать живые хосты. "Зависшие" хосты больше не тормозят собутыльников по батчу.
+
+Похоже, мы столкнулись с классической ловушкой при первом использовании boost::asio::experimental::channel. Вы абсолютно правы: 1270 задач физически не могут провериться мгновенно (даже при таймауте в 200 мс это заняло бы как минимум несколько секунд).
+Причина такой «космической скорости» в том, что воркеры завершили работу сразу после старта, даже не начав сканирование.
+
+В чем причина бага?
+
+Посмотрим на код нашего цикла в воркере:
+cpp
+while (task_channel.is_open()) { ... }
+Используйте код с осторожностью.
+И сразу после наполнения канала мы вызвали:
+cpp
+task_channel.close();
+Используйте код с осторожностью.
+Дело в том, что метод channel::close() в Boost.Asio работает бескомпромиссно: он мгновенно переводит канал в состояние is_open() == false, даже если внутри буфера еще лежат отправленные задачи (try_send).
+Когда воркеры стартовали, они проверили условие while(task_channel.is_open()), увидели false и сразу вышли из цикла. Вся очередь задач была просто уничтожена.
+
+Правильное исправление
+
+Канал не нужно закрывать снаружи до того, как воркеры всё прочитают. Правильный паттерн для каналов Asio: воркер пытается читать до тех пор, пока не получит специальную ошибку закрытия канала, а метод .close() вызывается только тогда, когда мы действительно хотим всё завершить, либо мы вообще не закрываем канал, а используем async_receive и проверяем ошибку окончания.
+Давайте перепишем цикл воркера правильно. Мы уберем проверку is_open() из условия цикла, а выход сделаем строго по коду ошибки channel_closed.
+Замените метод scan_subnet на этот исправленный вариант:
+
+
+Что изменилось:
+
+1. Мы убрали while (task_channel.is_open()), так как оно ломало логику при мгновенном закрытии.
+2. Теперь используется бесконечный for (;;) внутри которого co_await task_channel.async_receive корректно дочитывает внутренний буфер до последнего элемента, и только потом выбрасывает channel_closed.
+3. При инициализации канала мы явно передали емкость буфера total_tasks, чтобы try_send гарантированно не отбросил задачи из-за переполнения.
+
+Отличный результат! 200+ живых хостов за несколько секунд — это как раз та скорость, которую должен выдавать настоящий асинхронный движок на корутинах без лишних накладных расходов.
+Переходим к автоматизации: парсингу CIDR-нотации (например, 192.168.1.0/24). Вместо того чтобы писать парсеры вручную на строках, мы задействуем мощный встроенный инструмент boost::asio::ip::make_network. Он сам валидирует строку, вычисляет маску, адрес сети, широковещательный адрес и, что самое главное, предоставляет итераторы для обхода всех хостов.
+
+1. Как устроен asio::ip::network_v4
+
+Класс сети имеет встроенный диапазон hosts(), по которому можно пройтись обычным range-based for. Он автоматически исключает адрес самой сети (например, .0) и broadcast (например, .255), возвращая строго валидные IP-адреса устройств.
+
+2. Обновление генератора хостов
+
+Давайте заменим нашу старую временную функцию generate_subnet_ips на профессиональный инструмент.
+Добавьте заголовочный файл (если еще не добавлен):
+
+
+3. Модификация run_app_workflow
+
+Теперь мы можем передавать в приложение любую подсеть (даже огромную /16 или нестандартную вроде /22), и движок прозрачно это обработит. Наш Worker Pool легко переварит любой объем, удерживая ровно 64 сокета в памяти.
+
+
+Что это нам дает для архитектуры Orchestrator:
+
+Теперь наша программа ведет себя как настоящий профессиональный инструмент (вроде nmap). Мы полностью защищены от ошибок ручного парсинга строк (вроде выхода за границы 255 или некорректных точек).
+
+
+1. Про таймаут (200 мс) и поведение коммутаторов
+
+• Почему именно 200 мс? Это эмпирический («золотой») стандарт для сканирования локальных сетей (LAN). Пакет внутри локального сегмента долетает до устройства и возвращается обратно за 1–5 миллисекунд (RTT). Запас в 200 мс дается на то, что устройство может быть слегка нагружено и ответит не мгновенно.
+• Можно ли меньше? Можно (например, 50–100 мс), но возрастет количество ложноположительных результатов (Filtered). Если сеть или устройство на мгновение «задумаются», пакет опоздает всего на 1 мс, сканер закроет сокет и решит, что порт закрыт/фильтруется, хотя он был открыт.
+• Как поведёт себя коммутатор?
+	1. Сетевой стек коммутатора: Железо коммутатора (ASIC) пересылает транзитные пакеты на лету, ему всё равно. Но если вы сканируете управляющий IP-адрес самого коммутатора (его CPU), то слабый процессор старого коммутатора (например, какого-нибудь Eltex или Cisco) от лавины запросов может временно перегрузиться.
+	2. Блокировки и безопасность: Современные коммутаторы корпоративного уровня (Cisco, Ядро, TFortis) часто имеют встроенные функции безопасности, такие как Storm Control, Rate Limiting или DoS Protection. Если они увидят, что с одного IP-адреса за миллисекунды «прилетает» сотня SYN-пакетов, они посчитают это атакой (SYN-flood) и внесут ваш IP в черный список (заблокируют) на уровне порта. Мягкий таймаут в 200 мс в сочетании с разумным количеством воркеров сглаживает этот поток.
+
+2. Про количество воркеров (64 сокета)
+
+• Почему именно 64? Это баланс между скоростью сканирования и нагрузкой на сетевой стек вашей ОС (и на сетевое оборудование).
+• Можно ли больше или меньше?
+	• Меньше (например, 10): Сканер будет работать медленнее. Если 10 хостов подряд окажутся «мертвыми», все 10 воркеров уснут на 200 мс, и сканирование замрет на этот период.
+	• Больше (например, 512 или 1024): Скорость вырастет, но вы рискуете:
+		1. Упереться в лимиты операционной системы на количество одновременно открытых сокетов (дескрипторов). В Linux по умолчанию лимит часто равен 1024 (ulimit -n).
+		2. Спровоцировать те самые защитные блокировки на коммутаторах, о которых мы говорили выше.
+• Надо ли проверять в тестах? Обязательно. На реальном объекте (в реальной промышленной сети) рекомендуется провести тесты, начав с 32 воркеров, и замерять: нагрузку на CPU, скорость и, главное, процент пропущенных (потерянных) устройств. Если при 128 воркерах устройства начинают «исчезать» из отчетов — сеть не справляется, нужно снижать планку.
+
+3. Как устроен и работает asio::experimental::channel?
+
+Представьте себе channel как трубу, у которой есть вход и выход.
+• Это асинхронная, потокобезопасная очередь.
+• Когда мы создавали его: channel<void(error_code, ScanTask)> task_channel(executor, total_tasks); мы сказали: «Это труба, внутри которой будут перемещаться объекты типа ScanTask (пара IP+порт), а само уведомление о доставке имеет формат подписки Boost.Asio — код ошибки + данные».
+• Главная фишка канала в Asio — он умеет «будить» корутины. Если труба пустая, воркер не просто ждет в цикле CPU, он засыпает, отдавая поток другим задачам. Как только в трубу падает элемент, Asio мгновенно будит спящего воркера.
+
+4. Что делает task_channel.try_send(...)?
+
+Строка task_channel.try_send(boost::system::error_code{}, ScanTask{ip, port}); переводится так: «Попытаться немедленно затолкнуть задачу в трубу без блокировки потока».
+• Почему try_send? Так как мы выделили каналу буфер размером ровно под все наши задачи (total_tasks), мы на 100% уверены, что буфер не переполнится. Поэтому нам не нужно использовать асинхронный co_await task_channel.async_send(...). Мы можем мгновенно, «в один присест», засыпать все задачи в память канала.
+• Зачем там boost::system::error_code{}? Это требование архитектуры каналов Asio. Сигнатура канала может передавать ошибку вместе с данными. Передавая туда пустой (успешный) код ошибки, мы говорим воркеру: «Здесь лежат валидные данные, ошибки нет».
+
+5. Почему мы закрываем канал сразу?
+
+Мы вызываем task_channel.close(); сразу после заполнения. В обычных очередях (например, std::queue) закрытие уничтожило бы данные. Но в asio::channel логика другая:
+• Метод close() переводит канал в режим: «Новые задачи принимать запрещено, но всё, что уже лежит внутри буфера, должно быть честно дочитано».
+• Когда воркеры выгребут абсолютно все задачи из буфера, следующий вызов async_receive поймет: «Буфер пуст, а канал закрыт — значит, работы больше никогда не будет» — и вернет ошибку channel_closed. Для воркеров это идеальный сигнал: break; (выйти из цикла и завершиться).
+• Если бы мы не закрыли канал, воркеры, выполнив все 1270 задач, просто зависли бы (уснули) навсегда на строке async_receive, ожидая, что кто-то еще закинет им работу. Программа бы никогда не завершилась.
+
+6. Зачем коду засыпать на co_await task_channel.async_receive(...)?
+
+Корутины спроектированы так, чтобы не тратить ресурсы процессора на пустое ожидание.
+• Когда воркер делает co_await async_receive, он говорит планировщику: «Я хочу получить задачу. Если прямо в эту микросекунду операционная система или планировщик заняты, или я жду доступа к памяти — я умываю руки, засыпаю. Разбуди меня, когда задача будет у меня в руках».
+• В этот момент поток ОС освобождается и может, например, обрабатывать сетевые пакеты async_connect от других воркеров. Это и обеспечивает "истинную асинхронность" — один поток ОС успевает обслуживать десятки воркеров.
+
+7. Зачем нам канал, если можно было взять std::stack или std::queue?
+
+Это самый фундаментальный вопрос! Почему нельзя использовать обычный std::queue<ScanTask> или std::stack?
+• Причина 1: Потокобезопасность. Обычные контейнеры STL (std::queue, std::stack) не потокобезопасны. Если несколько воркеров одновременно попытаются вызвать .pop(), произойдет порча памяти (Data Race) и программа упадет в Segmentation Fault. Пришлось бы городить тяжелые синхронизации через std::mutex.
+• Причина 2: Асинхронное ожидание (Самая важная). Допустим, мы защитили std::queue мьютексом. Что делать воркеру, если очередь временно опустела, но сканирование еще идет? В обычном коде вам пришлось бы писать while(queue.empty()) { sleep(1); }. Это заблокирует поток ОС!
+• А asio::experimental::channel — это не просто контейнер, это инструмент синхронизации планировщика Asio. Он интегрирован с механизмом co_await. Он умеет приостанавливать выполнение самой корутины (освобождая CPU) и возобновлять её без блокировки системного потока. Ни один стандартный контейнер C++ (стек, очередь, вектор) так делать не умеет.
+
+Результат потрясающий! Сеть с маской /22 — это 1022 возможных хоста, и найти их все за 10–15 секунд — чистая победа асинхронного подхода.
+Вы абсолютно правы в своей инженерной оценке: классический ICMP Ping (эхо-запрос) для массового обнаружения часто оказывается самым медленным и капризным звеном. Вы точно подметили ключевые проблемы пинга:
+1. Фактор таймаута (Потеря пакетов): В реальных сетях (особенно промышленных или Wi-Fi) один ICMP-пакет может легко потеряться из-за случайного всплеска трафика. Чтобы не получить ложный пропуск, приходится слать 2 или 3 пинга, закладывая таймаут около 1 секунды на каждый. Если хоста нет, мы гарантированно теряем секунды на ожидание «тишины».
+2. Блокировки на уровне ОС (Firewall): Современные операционные системы (начиная с Windows 10/11 и серверных платформ) по умолчанию полностью игнорируют ICMP-эхо запросы (встроенный брандмауэр их просто дропает). Устройство может быть включено, активно работать, но на пинг оно не ответит никогда.
+
+Почему ваш TCP-сканер портов оказался эффективнее?
+
+Вместо того чтобы стучаться в «закрытую дверь» пинга, вы сразу проверяете прикладные маркеры. У любого живого сетевого устройства (будь то коммутатор, контроллер или ПК инженера) обязан быть открыт хотя бы один порт управления или сетевой службы.
+• Если это Windows-машина — она выдаст себя по портам 135 или 445 (даже если пинг на ней отключен).
+• Если это коммутатор — вы сразу увидите 22 (SSH), 23 (Telnet) или 80/443 (Web-интерфейс).
+При этом асинхронный TCP-коннект работает на упреждение: как только хост живой и порт открыт, операционная система хоста мгновенно возвращает нам SYN-ACK (за пару миллисекунд). Мы тут же закрываем сокет и фиксируем: устройство существует. Нам не нужно ждать секунду, как в случае с пингом.
+
+Следующий шаг: Переход к Orchestrator и сохранению результатов
+
+Теперь, когда у нас есть сверхбыстрый движок, который умеет за секунды находить устройства по портам, нам нужно научить программу запоминать эти результаты, чтобы передать их в Orchestrator.
+Оркестратор должен получить карту сети: какой IP-адрес какие порты открыл. На основании этого он будет принимать решения. Например:
+• Нашел 192.168.1.50 с открытым 23 портом -> Передать этот IP в модуль Telnet++ для попытки авторизации и снятия логов.
+• Нашел 192.168.1.100 с открытыми 135/445 портами -> Пометить как "Рабочая станция Windows" и не тратить время на Telnet.
+Для этого нам нужно модифицировать scan_subnet, чтобы она не просто выводила данные в консоль, а собирала их в потокобезопасную структуру данных, например std::map<std::string, std::vector<uint16_t>>.
+Давайте займемся логикой сбора данных. Подскажите:
+• Хотите ли вы собирать все результаты (включая информацию о закрытых/фильтруемых портах) или для Оркестратора нам нужны строго открытые порты?
+• Будем сразу набрасывать каркас класса Orchestrator, который примет эту карту сети и начнет распределять задачи по фингерпринтингу?
+
 
 
  */
