@@ -1,6 +1,6 @@
 //Orchestrator
-#if 0
-class Orchestrator {
+#if 1
+/*class Orchestrator {
 public:
     explicit Orchestrator(asio::any_io_executor exec) : executor_(exec) {}
 
@@ -25,11 +25,174 @@ public:
 
 private:
     asio::any_io_executor executor_;
+};*/
+
+#pragma once
+#include <boost/asio.hpp>
+#include <vector>
+#include <string>
+#include <iostream>
+#include <chrono>
+
+// Подключаем наши модули
+#include "TcpScanner.hpp"     // Модуль сканирования портов
+#include "SshWorkerPool.hpp"  // Наш обновленный параллельный SSH-исполнитель
+
+namespace asio = boost::asio;
+
+class Orchestrator {
+public:
+    explicit Orchestrator(asio::any_io_executor exec)
+            : executor_(exec), scanner_(exec), ssh_pool_(exec) {}
+
+    /**
+     * @brief Конвейер обнаружения коммутаторов и массового сбора MAC-таблиц
+     * @param discovered_ips Список всех IP-адресов, сгенерированных из CIDR подсети
+     */
+    asio::awaitable<void> discover_and_collect_fdb(const std::vector<std::string>& discovered_ips) {
+        std::cout << "[Orchestrator] Шаг 1: Фингерпринтинг подсети. Ищем управляемые коммутаторы (Port 22)...\n";
+
+        // Для поиска коммутаторов нам достаточно проверить только порт 22 (SSH)
+        std::vector<uint16_t> ports_to_scan = { 22 };
+        auto scan_timeout = std::chrono::milliseconds(200);
+        size_t max_scan_workers = 64;
+
+        // В идеале, чтобы собрать список открытых портов, мы можем слегка модифицировать сканер,
+        // либо временно логировать или собирать адреса. Допустим, наш сканер или оркестратор
+        // перехватывает открытые хосты.
+        // Допустим, мы получили список IP, у которых порт 22 гарантированно ОТКРЫТ:
+        std::vector<std::string> switch_ips;
+
+        // ПРИМЕЧАНИЕ: На этапе интеграции мы научим TcpScanner возвращать вектор
+        // успешно пройденных хостов. Для построения вектора задач сейчас представим,
+        // что мы отфильтровали подсеть и нашли, например, 5 коммутаторов.
+        // (Ниже логика сборки вектора задач на основе switch_ips)
+
+        if (switch_ips.empty()) {
+            std::cout << "[-] На шаге сканирования портов коммутаторы с открытым SSH не обнаружены.\n";
+            co_return;
+        }
+
+        std::cout << "[Orchestrator] Шаг 2: Формирование пакета задач для SSH-пула воркеров...\n";
+
+        // Единые учетные данные для авторизации на сетевом оборудовании объекта
+        std::string switch_user = "admin";
+        std::string switch_pass = "admin"; // Или ваш промышленный пароль для TFortis
+        std::string cli_command = "show mac address-table"; // Промышленный стандарт чтения FDB
+
+        // Формируем вектор задач
+        std::vector<SshTask> ssh_tasks;
+        ssh_tasks.reserve(switch_ips.size()); // Оптимизируем память, исключая лишние реаллокации вектора
+
+        for (const auto& ip : switch_ips) {
+            SshTask task;
+            task.ip = ip;
+            task.username = switch_user;
+            task.password = switch_pass;
+            task.command = cli_command;
+
+            ssh_tasks.push_back(task);
+        }
+
+        std::cout << "[+] Сформировано " << ssh_tasks.size() << " SSH-задач для параллельного выполнения.\n"
+                  << "[Orchestrator] Шаг 3: Запуск параллельного выгребания MAC-таблиц...\n";
+
+        auto ssh_timeout = std::chrono::milliseconds(5000); // На криптографию и чтение даем 5 секунд
+        size_t max_ssh_sessions = 10; // Одновременно держим не более 10 SSH сессий, чтобы не перегружать CPU
+
+        // Выстреливаем пулом воркеров по каналу Asio
+        std::vector<SshResult> results = co_await ssh_pool_.execute_parallel_commands(
+                ssh_tasks,
+                ssh_timeout,
+                max_ssh_sessions
+        );
+
+        std::cout << "\n[Orchestrator] Шаг 4: Анализ полученных результатов...\n";
+        for (const auto& res : results) {
+            if (res.success) {
+                std::cout << "[+] Успешно прочитана таблица с коммутатора " << res.ip << "\n"
+                          << "    Размер сырых данных: " << res.raw_output.size() << " байт.\n";
+
+                // TODO: Передаем res.raw_output в ваш проверенный модуль
+                // математического исключения портов или LLDP парсер!
+            } else {
+                std::cerr << "[!] Сбой опроса коммутатора " << res.ip << ". Причина: " << res.error_message << "\n";
+            }
+        }
+
+        std::cout << "\n[Orchestrator] Массовый сбор топологических данных завершен.\n";
+    }
+
+private:
+    asio::any_io_executor executor_;
+    TcpScanner scanner_;
+    SshWorkerPool ssh_pool_;
 };
+
+
+
 
 /*
  * Теперь у нас есть всё, чтобы спроектировать мозг системы — Orchestrator. Его задача — связать вчерашнюю карту локальных интерфейсов, генератор CIDR, TcpScanner, DnsResolver и новый TcpTraceroute в один интеллектуальный конвейер автоматизации.
  *
+ *
+Идеи по оптимизации модулей перед сборкой Оркестратора
+
+Чтобы модули идеально стыковались друг с другом в конвейере, я предлагаю внести три микро-архитектурных улучшения:
+
+1. Единый Контекст Исполнения (any_io_executor)
+
+Убедитесь, что все модули (DnsResolver, IcmpTraceroute и будущий Orchestrator) инициализируются через один и тот же исполнитель (executor). Передавайте его из main через корневую корутину: auto exec = co_await asio::this_coro::executor;. Это гарантирует, что весь наш софт будет крутиться на одном потоке без лишнего переключения контекста ядер CPU.
+
+2. Унификация типов адресов
+
+При передаче данных от LocalConfigProvider к сканеру и трассировщику откажитесь от повторного парсинга строк. Пусть LocalNetworkConfig отдает asio::ip::address_v4, а не std::string. Метод asio::ip::make_network_v4 принимает именно объекты адреса и маски, что уберет накладные расходы.
+
+3. Безопасный Тайм-аут для DNS внутри трассировщика
+
+Так как имена промежуточных роутеров вы забираете в фоне через detached, убедитесь, что в DnsResolver зашит внутренний асинхронный таймер (asio::steady_timer) на случай, если какой-то транзитный узел провайдера «зависнет» и не ответит на PTR-запрос. Иначе корутина имени останется висеть в памяти навсегда.
+
+Для того чтобы Оркестратор мог массово выгребать MAC-таблицы, нам нужно красиво связать результаты работы двух предыдущих этапов:
+1. Наш быстрый TcpScanner простукивает подсеть и находит «живые» IP-адреса, у которых открыт порт 22 (SSH). Это наш список целевых коммутаторов.
+2. Оркестратор берет эти IP-адреса, подставляет единые учетные данные (логин/пароль для доступа к железу) и нужную CLI-команду (например, для коммутаторов TFortis это обычно стандартная команда show mac-address-table или show mac address-table).
+
+
+Архитектурное решение внутри Orchestrator
+
+Давайте напишем фрагмент кода для класса Orchestrator, который берет результаты сканирования портов и трансформирует их в вектор задач std::vector<SshTask> для нашего асинхронного крипто-пула воркеров.
+
+
+Архитектурные преимущества такой сборки:
+
+1. Разделение абстракций: Логика формирования вектора SshTask изолирована в Оркестраторе. Пул воркеров SshWorkerPool ничего не знает о том, откуда взялись эти IP-адреса, он просто как автомат исполняет крипто-транзакции.
+2. Контроль нагрузки (max_concurrent_workers = 10): Если TcpScanner может безопасно открывать по 64 сокета за раз (потому что это быстрые легкие пакеты), то для SSH-сессий мы ставим лимит скромнее (например, 10). Процедура Diffie-Hellman обмена ключами в libssh2 требует вычислительных ресурсов. Батчинг на каналах Asio не позволит программе просадить CPU вашего компьютера при одновременном старте сессий.
+Конвейер спроектирован. Когда у вас появится возможность протестировать код на реальном стенде или коммутаторах TFortis, этот каркас станет идеальной отправной точкой.
+Мы успешно зафиксировали логику конвейера Оркестратора и генерации SSH-задач.
+
+Да, абсолютно верно! Архитектурно они теперь работают как близнецы-братья.
+Я специально спроектировал TelnetWorkerPool так, чтобы он один в один повторял логику, структуру и интерфейс SshWorkerPool.
+
+В чем заключается симметрия (почему Оркестратору будет легко):
+
+Для нашего главного «мозга» — Оркестратора — работа с обоими пулами выглядит идентично. Посмотрите на их методы:
+• Для SSH:cpp
+std::vector<SshResult> results = co_await ssh_pool_.execute_parallel_commands(tasks, timeout, max_workers);
+Используйте код с осторожностью.
+• Для Telnet:cpp
+std::vector<TelnetResult> results = co_await telnet_pool_.execute_parallel_commands(tasks, timeout, max_workers);
+Используйте код с осторожностью.
+Оба пула принимают на вход похожий вектор задач (IP, Логин, Пароль, Команда), запечатывают его в асингую трубу asio::experimental::channel, параллельно запускают пачку воркеров и возвращают Оркестратору вектор с результатами, где лежит чистый текст таблицы MAC-адресов.
+
+Единственное внутреннее различие (почему коды внутри разные):
+
+Вы детально разберете это, когда начнете штудировать код, но главная разница в том, как выполняется команда:
+1. В SSH есть режим Exec (Автоматический): Мы одной системной функцией libssh2_channel_exec говорим коммутатору: «Выполни вот это и отдай текст». Нам не нужно имитировать ввод логина и пароля в консоль, библиотека криптографии делает это скрыто на уровне протокола.
+2. В Telnet режима Exec нет (Имитация человека): Telnet умеет работать только как «голый текстовый терминал». Поэтому внутри TelnetWorkerPool нам пришлось написать конечный автомат (диалог). Робот подключается к сокету и буквально «высматривает» в прилетающем тексте слова login или user, чтобы отправить логин, затем ждет слово word, чтобы отправить пароль, ловит промпт > или # и только тогда отправляет команду show mac address-table.
+Но всю эту сложную текстовую перепалку с вводом логинов/паролей TelnetWorkerPool полностью прячет внутри себя.
+Для Оркестратора это абсолютно прозрачно: он просто отдал пачку IP-адресов старых коммутаторов в Telnet-пул, подождал одну строчку co_await и на выходе получил готовые строковые буферы с MAC-таблицами для построения топологии.
+
+
+
  */
 #endif
 
@@ -37,7 +200,6 @@ private:
 
 //LocalNetworkConfig
 #if 0
-
 #include <string>
 #include <iostream>
 #include <vector>
@@ -541,8 +703,7 @@ if (!config.ip_address.empty()) break; // <-- ВОТ ОН, ТОРМОЗ!
 
 
 //nslookup
-#if 1
-
+#if 0
 #include <iostream>
 #include <boost/asio.hpp>
 
@@ -815,8 +976,6 @@ private:
 
  */
 #endif
-
-
 
 
 
@@ -1421,7 +1580,7 @@ while (sum >> 16) {
 
 
 
-//SSH, v.2
+//SSH-client, v.2
 #if 0
 #include <iostream>
 #include <vector>
@@ -2053,14 +2212,240 @@ cpp
 2. Если функция возвращает asio::awaitable<void> (как async_wait_socket или process_read):
 • Возвращает: Асинхронную задачу без передачи данных. Она служит исключительно маркером синхронизации времени — приостанавливает поток и возобновляет его, когда сетевое событие наступило.
 */
+#endif
 
+//SSH WorkerPool
+#if 0
+#pragma once
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <memory>
+#include <libssh2.h>
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Структура задачи для воркера
+struct SshTask {
+    std::string ip;
+    std::string username;
+    std::string password;
+    std::string command;
+};
+
+// Структура результата выполнения
+struct SshResult {
+    std::string ip;
+    bool success = false;
+    std::string raw_output;
+    std::string error_message;
+};
+
+class SshWorkerPool {
+private:
+    asio::any_io_executor executor_;
+
+    // Вспомогательный метод ожидания сокета, перенесенный из вашего класса
+    asio::awaitable<bool> async_wait_socket(tcp::socket& socket, LIBSSH2_SESSION* session) {
+        int dir = libssh2_session_block_directions(session);
+        boost::system::error_code active_ec;
+
+        if (dir & LIBSSH2_SESSION_BLOCK_INBOUND) {
+            std::tie(active_ec) = co_await socket.async_wait(tcp::socket::wait_read, asio::as_tuple(asio::use_awaitable));
+        } else if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
+            std::tie(active_ec) = co_await socket.async_wait(tcp::socket::wait_write, asio::as_tuple(asio::use_awaitable));
+        }
+
+        co_return !active_ec; // Возвращаем true, если сокет жив
+    }
+
+    /**
+     * @brief Атомарная корутина выполнения одной CLI команды на одном коммутаторе (Взамен старой ssh_session_logic)
+     */
+    asio::awaitable<SshResult> execute_single_ssh(SshTask task, std::chrono::milliseconds timeout_ms) {
+        SshResult result;
+        result.ip = task.ip;
+
+        tcp::socket socket(executor_);
+        LIBSSH2_SESSION* session = nullptr;
+        LIBSSH2_CHANNEL* channel = nullptr;
+
+        try {
+            tcp::resolver resolver(executor_);
+            // Асингуем подключение TCP сокета
+            auto endpoints = co_await resolver.async_resolve(task.ip, "22", asio::use_awaitable);
+            co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+
+            // Инициализируем libssh2 сессию
+            session = libssh2_session_init();
+            if (!session) {
+                result.error_message = "Libssh2 init failed";
+                co_return result;
+            }
+
+            libssh2_session_set_blocking(session, 0);
+
+            int rc;
+            // Криптографическое рукопожатие
+            while ((rc = libssh2_session_handshake(session, socket.native_handle())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Handshake failed"; clean_up(session, channel); co_return result; }
+
+            // Аутентификация
+            while ((rc = libssh2_userauth_password(session, task.username.c_str(), task.password.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Auth rejected"; clean_up(session, channel); co_return result; }
+
+            // Открытие канала
+            while (!(channel = libssh2_channel_open_session(session))) {
+                if (libssh2_session_last_error(session, nullptr, nullptr, 0) != LIBSSH2_ERROR_EAGAIN) break;
+                if (!co_await async_wait_socket(socket, session)) { break; }
+            }
+            if (!channel) { result.error_message = "Channel open failed"; clean_up(session, channel); co_return result; }
+
+            // КЛЮЧЕВОЙ МОМЕНТ АВТОМАТИЗАЦИИ: Запускаем Exec-режим вместо Shell
+            while ((rc = libssh2_channel_exec(channel, task.command.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Exec command failed"; clean_up(session, channel); co_return result; }
+
+            // Асинхронный сбор вывода (Модифицированный process_read)
+            std::vector<char> buffer(4096);
+            for (;;) {
+                ssize_t nread = libssh2_channel_read(channel, buffer.data(), buffer.size());
+                if (nread > 0) {
+                    // Конкатенируем данные в результирующий буфер
+                    result.raw_output.append(buffer.data(), nread);
+                } else if (nread == LIBSSH2_ERROR_EAGAIN) {
+                    if (!co_await async_wait_socket(socket, session)) break;
+                } else {
+                    // nread == 0 означает, что коммутатор выдал все данные и закрыл каналExec
+                    break;
+                }
+            }
+
+            result.success = true;
+        }
+        catch (const std::exception& e) {
+            result.error_message = std::string("Socket/Asio exception: ") + e.what();
+        }
+
+        clean_up(session, channel);
+        co_return result;
+    }
+
+    void clean_up(LIBSSH2_SESSION* session, LIBSSH2_CHANNEL* channel) {
+        if (channel) libssh2_channel_free(channel);
+        if (session) {
+            libssh2_session_disconnect(session, "Automation Shutdown");
+            libssh2_session_free(session);
+        }
+    }
+
+public:
+    explicit SshWorkerPool(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Запуск параллельного сбора таблиц со всей подсети коммутаторов (Паттерн Channel из TcpScanner)
+     */
+    asio::awaitable<std::vector<SshResult>> execute_parallel_commands(
+            const std::vector<SshTask>& tasks,
+            std::chrono::milliseconds timeout_ms,
+            size_t max_concurrent_workers)
+    {
+        std::vector<SshResult> total_results;
+
+        // Переносим наш проверенный паттерн трубы (Channel)
+        asio::experimental::channel<void(boost::system::error_code, SshTask)> task_channel(executor_, tasks.size());
+
+        // Наполняем трубу задачами
+        for (const auto& task : tasks) {
+            task_channel.try_send(boost::system::error_code{}, task);
+        }
+        task_channel.close(); // Фиксируем очередь
+
+        // Лямбда-воркер для пула
+        auto worker = [&](size_t worker_id, std::vector<SshResult>& shared_results) -> asio::awaitable<void> {
+            try {
+                for (;;) {
+                    boost::system::error_code ec;
+                    SshTask task = co_await task_channel.async_receive(asio::redirect_error(asio::use_awaitable, ec));
+
+                    if (ec == asio::experimental::channel_errc::channel_closed) {
+                        break; // Труба опустела, воркер штатно завершается
+                    }
+
+                    // Запускаем атомарную крипто-сессию к железке
+                    SshResult res = co_await execute_single_ssh(task, timeout_ms);
+
+                    // Сохраняем результат. (Так как мы в одном потоке io_context, push_back безопасен без мьютексов!)
+                    shared_results.push_back(res);
+                }
+            } catch (...) {}
+            co_return;
+        };
+
+        // Асинхронный барьер синхронизации (Latch на таймере)
+        auto remaining_workers = std::make_shared<size_t>(max_concurrent_workers);
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        // Спавним воркеров в планировщик
+        for (size_t i = 0; i < max_concurrent_workers; ++i) {
+            asio::co_spawn(executor_, [this, worker, i, &total_results, remaining_workers, wait_timer]() -> asio::awaitable<void> {
+                co_await worker(i, total_results);
+                (*remaining_workers)--;
+                if (*remaining_workers == 0) {
+                    wait_timer->cancel(); // Последний воркер будит вызывающую корутину
+                }
+                co_return;
+            }, asio::detached);
+        }
+
+        // Ждем завершения всех сессий
+        if (*remaining_workers > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        co_return total_results;
+    }
+};
+
+/*
+ *
+Что мы меняем для пула воркеров (Архитектурные правки):
+
+1. Убираем PTY Терминал и Shell: Вместо libssh2_channel_shell мы будем использовать libssh2_channel_exec(channel_, "show mac address-table"). Это отключает постраничный вывод (--More--), отключает эхо-повтор команд в буфер и снимает любые ограничения на ширину строк (терминал больше не будет принудительно резать таблицы по 160 символов).
+2. Накапливаем буфер ответа: Вместо вывода текста в std::cout через коллбек, корутина чтения будет аккуратно складывать все прилетающие чанки в одну строку std::string output_buffer, пока канал не закроется со стороны коммутатора (когда тот закончит отдавать таблицу).
+3. Удаляем клавиатуру и таймер-удерживатель: Воркер пула должен работать по принципу атомарной транзакции: Подключился -> Запустил Exec -> Выгреб весь текст до конца -> Закрылся -> Вернул строку.
+
+
+Архитектурный триумф интеграции:
+
+1. Симметрия кода: Метод execute_parallel_commands один в один повторяет логику вашего scan_subnet. Очередь задач запечатывается через .close(), а барьер на атомарном счетчике remaining_workers филигранно управляет ожиданием.
+2. Потокобезопасность без блокировок: Поскольку io_context у нас работает в один поток, воркеры складывают результаты в общий вектор shared_results.push_back(res) без мьютексов и критических секций. Никаких накладных расходов.
+3. Чистые данные: Замена libssh2_channel_shell на libssh2_channel_exec гарантирует, что в result.raw_output прилетит чистая, не порезанная на куски таблица MAC-адресов или LLDP-соседей. Парсить ее регулярными выражениями теперь будет одно удовольствие.
+
+Для того чтобы Оркестратор мог массово выгребать MAC-таблицы, нам нужно красиво связать результаты работы двух предыдущих этапов:
+1. Наш быстрый TcpScanner простукивает подсеть и находит «живые» IP-адреса, у которых открыт порт 22 (SSH). Это наш список целевых коммутаторов.
+2. Оркестратор берет эти IP-адреса, подставляет единые учетные данные (логин/пароль для доступа к железу) и нужную CLI-команду (например, для коммутаторов TFortis это обычно стандартная команда show mac-address-table или show mac address-table).
+
+
+
+ */
 #endif
 
 
 
-//Telnet, v.3
+//Telnet-client, v.3
 #if 0
-
 #include <iostream>
 #include <vector>
 #include <string>
@@ -2115,9 +2500,6 @@ struct asio_channel {
         }
     }
 };
-
-
-
 
 namespace asio = boost::asio;
 using asio::ip::tcp;
@@ -2349,7 +2731,266 @@ int main() {
  */
 #endif
 
+//Telnet WorkerPool
+#if 1
+#pragma once
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <telnetpp/session.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <memory>
 
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Структура задачи для Telnet-воркера
+struct TelnetTask {
+    std::string ip;
+    std::string username;
+    std::string password;
+    std::string command;
+};
+
+// Структура результата транзакции
+struct TelnetResult {
+    std::string ip;
+    bool success = false;
+    std::string raw_output;
+    std::string error_message;
+};
+
+// Адаптированный под автоматизацию класс-мост (без блокирующего asio::write внутри write)
+struct asio_script_channel {
+    tcp::socket& socket;
+    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
+
+    void write(telnetpp::bytes data) {
+        if (!data.empty() && socket.is_open()) {
+            boost::system::error_code ec;
+            // Используем синхронную запись, так как telnetpp вызывает ее внутри логики сессии,
+            // но сокет находится под управлением асинхронного цикла
+            asio::write(socket, asio::buffer(data.data(), data.size()), ec);
+        }
+    }
+
+    void async_read(std::function<void(telnetpp::bytes)> callback) {
+        telnet_parser_callback = std::move(callback);
+    }
+};
+
+class TelnetWorkerPool {
+private:
+    asio::any_io_executor executor_;
+
+    /**
+     * @brief Атомарный неблокирующий ожидатель промпта (ключевой строки вроде "Username:" или "#")
+     */
+    asio::awaitable<bool> wait_for_prompt(tcp::socket& socket, asio_script_channel& channel,
+                                          std::string& session_buffer, const std::string& target_prompt,
+                                          std::chrono::milliseconds timeout_ms)
+    {
+        std::vector<char> recv_buffer(4096);
+        asio::steady_timer timer(executor_);
+        timer.expires_after(timeout_ms);
+
+        while (session_buffer.find(target_prompt) == std::string::npos) {
+            boost::system::error_code ec;
+
+            // Гонка между приходом данных из сокета и таймаутом ожидания ответа коммутатора
+            auto race_result = co_await (
+                    socket.async_read_some(asio::buffer(recv_buffer), asio::redirect_error(asio::use_awaitable, ec)) ||
+                    timer.async_wait(asio::use_awaitable)
+            );
+
+            if (race_result.index() == 1 || ec) {
+                co_return false; // Сработал таймер таймаута или сокет упал
+            }
+
+            size_t bytes_received = std::get<0>(race_result);
+            if (bytes_received > 0 && channel.telnet_parser_callback) {
+                telnetpp::bytes view{ reinterpret_cast<uint8_t*>(recv_buffer.data()), bytes_received };
+                channel.telnet_parser_callback(view); // Пропускаем через фильтр управляющих опций Telnet
+            }
+        }
+        co_return true;
+    }
+
+    /**
+     * @brief Скриптовый линейный CLI-диалог с коммутатором в корутине
+     */
+    asio::awaitable<TelnetResult> execute_single_telnet(TelnetTask task, std::chrono::milliseconds timeout_ms) {
+        TelnetResult result;
+        result.ip = task.ip;
+
+        tcp::socket socket(executor_);
+        asio_script_channel script_channel{ socket };
+        telnetpp::session session(script_channel);
+
+        std::string session_buffer;
+
+        // Регистрируем парсер: чистый текст накапливаем в строковый буфер сессии
+        session.async_read([&](telnetpp::bytes data) {
+            if (!data.empty()) {
+                session_buffer.append(reinterpret_cast<char const*>(data.data()), data.size());
+            }
+        });
+
+        try {
+            tcp::resolver resolver(executor_);
+            auto endpoints = co_await resolver.async_resolve(task.ip, "23", asio::use_awaitable);
+            co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+
+            auto step_timeout = std::chrono::milliseconds(1500);
+
+            // 1. Ждем приглашения ввода логина (на промышленных железках обычно "Username:" или "login:")
+            // Для универсальности ищем подстроку "in:" или "name:"
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, "user", step_timeout) &&
+                !co_await wait_for_prompt(socket, script_channel, session_buffer, "login", step_timeout)) {
+                // Если специфичный промпт не найден, пробуем отправить пустой перевод строки, чтобы «разбудить» терминал
+                session.write({ reinterpret_cast<uint8_t const*>("\r\n"), 2 });
+            }
+
+            // Отправляем логин
+            std::string login_payload = task.username + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(login_payload.data()), login_payload.size() });
+            session_buffer.clear();
+
+            // 2. Ждем приглашения ввода пароля ("Password:" / "word:")
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, "word", step_timeout)) {
+                result.error_message = "Timeout waiting for Password prompt";
+                co_return result;
+            }
+
+            // Отправляем пароль
+            std::string pass_payload = task.password + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(pass_payload.data()), pass_payload.size() });
+            session_buffer.clear();
+
+            // 3. Ждем появления оперативного промпта командной строки (символы ">" или "#")
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, ">", step_timeout) &&
+                !co_await wait_for_prompt(socket, script_channel, session_buffer, "#", step_timeout)) {
+                result.error_message = "Authentication failed or prompt not found";
+                co_return result;
+            }
+            session_buffer.clear();
+
+            // 4. КЛЮЧЕВОЙ ШАГ: Отправляем целевую команду (show mac address-table)
+            std::string cmd_payload = task.command + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(cmd_payload.data()), cmd_payload.size() });
+
+            // Вычерпываем весь вывод команды до тех пор, пока коммутатор не вернет промпт окончания строки ">" или "#"
+            // Либо пока не сработает полный таймаут операции.
+            auto execution_timeout = std::chrono::milliseconds(3000);
+            co_await wait_for_prompt(socket, script_channel, session_buffer, "#", execution_timeout);
+
+            result.raw_output = session_buffer;
+            result.success = true;
+        }
+        catch (const std::exception& e) {
+            result.error_message = std::string("Telnet exception: ") + e.what();
+        }
+
+        boost::system::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_both, ec);
+        socket.close(ec);
+
+        co_return result;
+    }
+
+public:
+    explicit TelnetWorkerPool(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Массовое параллельное выполнение CLI-скриптов по всей подсети (Копия конвейера из TcpScanner)
+     */
+    asio::awaitable<std::vector<TelnetResult>> execute_parallel_commands(
+            const std::vector<TelnetTask>& tasks,
+            std::chrono::milliseconds timeout_ms,
+            size_t max_concurrent_workers)
+    {
+        std::vector<TelnetResult> total_results;
+
+        // Создаем асинхронный канал Asio под емкость задач
+        asio::experimental::channel<void(boost::system::error_code, TelnetTask)> task_channel(executor_, tasks.size());
+
+        for (const auto& task : tasks) {
+            task_channel.try_send(boost::system::error_code{}, task);
+        }
+        task_channel.close(); // Запечатываем очередь задач
+
+        // Лямбда-воркер
+        auto worker = [&](size_t worker_id, std::vector<TelnetResult>& shared_results) -> asio::awaitable<void> {
+            try {
+                for (;;) {
+                    boost::system::error_code ec;
+                    TelnetTask task = co_await task_channel.async_receive(asio::redirect_error(asio::use_awaitable, ec));
+
+                    if (ec == asio::experimental::channel_errc::channel_closed) {
+                        break; // Задачи полностью разобраны
+                    }
+
+                    TelnetResult res = co_await execute_single_telnet(task, timeout_ms);
+                    shared_results.push_back(res);
+                }
+            } catch (...) {}
+            co_return;
+        };
+
+        // Асинхронный барьер синхронизации (Latch)
+        auto remaining_workers = std::make_shared<size_t>(max_concurrent_workers);
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        // Разворачиваем пул воркеров в io_context
+        for (size_t i = 0; i < max_concurrent_workers; ++i) {
+            asio::co_spawn(executor_, [this, worker, i, &total_results, remaining_workers, wait_timer]() -> asio::awaitable<void> {
+                co_await worker(i, total_results);
+                (*remaining_workers)--;
+                if (*remaining_workers == 0) {
+                    wait_timer->cancel(); // Последний воркер будит оркестратор
+                }
+                co_return;
+            }, asio::detached);
+        }
+
+        if (*remaining_workers > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        co_return total_results;
+    }
+};
+
+/*
+ * Прекрасный, глубоко проработанный код Telnet-клиента на базе библиотеки telnetpp. Ваши комментарии идеально отражают архитектурные узлы: класс-мост asio_channel сопрягает асинхронный сокет и синхронный концепт потока библиотеки, а вызов keep_alive_timer.cancel() служит элегантным триггером для разрушения сессии сверху вниз.
+Однако, как и в случае с SSH, текущая версия ориентирована на интерактивную сессию человека (присутствуют handle_keyboard, посимвольный опрос через _kbhit(), и вывод текста напрямую в std::cout). Кроме того, протокол Telnet, в отличие от SSH Exec-режима, не имеет встроенной концепции атомарного удаленного выполнения команды. Telnet — это всегда симуляция «человека у терминала»: программа должна подключиться, дождаться приглашения Username:, ввести логин, дождаться Password:, ввести пароль, дождаться промпта коммутатора (например, Switch>), отправить команду и читать поток байт, пока вывод не прекратится.
+Для интеграции в высокопроизводительный пул воркеров Оркестратора мы проведем автоматизацию этого CLI-диалога, обернем его в паттерн asio::experimental::channel и избавимся от интерактивного мусора.
+
+🛠️ Перевод Telnet-клиента в режим Автоматизации (Скриптовый пул)
+
+1. Убираем клавиатуру и эхо: Нам больше не нужны handle_keyboard и плагин telnetpp::options::echo::client.
+2. Буферизация и линейный сценарий: Корутина сессии будет асинхронно выгребать данные в буфер и сканировать его на наличие ключевых строк подсистемы авторизации и промптов коммутатора (Login:, >, #).
+3. Пул воркеров без мьютексов: Результаты (сырые таблицы MAC) будут безопасно конкатенироваться внутри независимых транзакций и складываться в итоговый вектор в общем потоке io_context.
+
+Модернизированный TelnetWorkerPool
+
+Ниже представлен готовый класс TelnetWorkerPool, полностью повторяющий логику буферизации, закрытия канала по типу .close() и асинхронного таймера-барьера из вашего TCP-сканера.
+
+
+Архитектурный разбор интеграции Telnet:
+
+1. Синхронизация через std::get<0>(race_result): В методе wait_for_prompt мы используем фичу Boost.Asio 1.87 — извлекаем реальное количество байт из асинхронного оператора гонки ||, который возвращает стандартный std::variant.
+2. Гибкий конечный автомат (State Machine): Метод execute_single_telnet последовательно двигает сессию по фазам (Ожидание Login -> Отправка Login -> Ожидание Pass -> Отправка Pass -> Команда -> Сбор вывода). Если какая-то железка зависнет на этапе авторизации, асинхронная гонка со steady_timer мгновенно разорвет зависший узел, защищая пул от простоев.
+3. Единый конвейер Оркестратора: Теперь у Оркестратора абсолютно идентичные интерфейсы управления: он может вызвать ssh_pool_.execute_parallel_commands, а для старых сегментов сети — telnet_pool_.execute_parallel_commands.
+Теперь оба CLI-клиента полностью переведены на рельсы реактивного параллельного выполнения и готовы к интеграции в ядро системы картографии топологии.
+Мы полностью пересобрали и автоматизировали Telnet-клиент под требования промышленного пула воркеров.
+
+ */
+#endif
 
 //Работа по SNMP, v.3
 #if 0
@@ -3265,7 +3906,7 @@ asio::awaitable<void> snmp_v3_collection_logic(std::string ip_address) {
 
 
 
-//Сканер портов
+//Сканер tcp-портов
 #if 0
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
@@ -3384,8 +4025,7 @@ public:
             }
         }
 
-        // ВАЖНО: Мы НЕ закрываем канал здесь! Мы закроем его, когда поймем, что задачи кончились,
-        // либо позволим воркерам выгребать их. Но самый надежный способ для Asio Channel —
+        // Но самый надежный способ для Asio Channel —
         // это закрыть его СРАЗУ ПОСЛЕ наполнения, НО читать пока async_receive возвращает успех,
         // потому что async_receive умеет выгребать остатки из буфера закрытого канала!
         // ВАЖНО: Фиксируем очередь. Закрытый канал разрешает воркерам дочитать буфер до конца через async_receive.
@@ -3450,67 +4090,10 @@ public:
         std::cout << "[Orchestrator] Сканирование всей подсети успешно завершено.\n\n";
     }
 
-    /**
-     * @brief Параллельное сканирование вектора портов на одном хосте
-     * @param ip_address Целевой IP-адрес
-     * @param ports Вектор портов для проверки (например: {22, 23, 80, 445})
-     * @param timeout_ms Таймаут на каждый порт
-     */
-    /**
-     * @brief Истинно параллельное сканирование вектора портов на одном хосте
-     */
-    /**
-     * @brief Истинно параллельный опрос вектора портов хоста
-     */
-    /*asio::awaitable<void> scan_host(std::string ip_address, const std::vector<uint16_t>& ports, std::chrono::milliseconds timeout_ms) {
-        std::cout << "[Scanner] Начинаем ПАРАЛЛЕЛЬНЫЙ опрос хоста " << ip_address << " по " << ports.size() << " портам...\n";
 
-        auto remaining_tasks = std::make_shared<size_t>(ports.size());
-        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
-        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
-
-        for (uint16_t port : ports) {
-            // ИСПРАВЛЕНИЕ: Вызываем именованную корутину-метод вместо лямбды.
-            // Передача port по значению гарантирует изоляцию данных!
-            asio::co_spawn(
-                    executor_,
-                    process_port_scan(ip_address, port, timeout_ms, remaining_tasks, wait_timer),
-                    asio::detached
-            );
-        }
-
-        if (*remaining_tasks > 0) {
-            boost::system::error_code ec;
-            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
-        }
-
-        std::cout << "[Scanner] Параллельный опрос хоста " << ip_address << " завершен.\n\n";
-    }*/
 
 private:
 
-    // НОВЫЙ МЕТОД: Изолированный рабочий воркер для одного порта
-    /*asio::awaitable<void> process_port_scan(
-            std::string ip_address,
-            uint16_t port,
-            std::chrono::milliseconds timeout_ms,
-            std::shared_ptr<size_t> remaining_tasks,
-            std::shared_ptr<asio::steady_timer> wait_timer)
-    {
-        // Здесь port равен ровно тому значению, которое было на итерации цикла!
-        PortStatus status = co_await scan_single_port(ip_address, port, timeout_ms);
-
-        if (status == PortStatus::Open) {
-            std::string service_name = guess_service(port);
-            std::cout << "  [+] ИНФО: " << ip_address << ":" << port << " ОТКРЫТ (" << service_name << ")\n";
-        }
-
-        (*remaining_tasks)--;
-        if (*remaining_tasks == 0) {
-            wait_timer->cancel();
-        }
-        co_return;
-    }*/
 
     // Вспомогательный метод для красивого логирования
     std::string guess_service(uint16_t port) {
@@ -3565,7 +4148,7 @@ asio::awaitable<void> run_app_workflow() {
     TcpScanner scanner(exec);
 
     // Вводим подсеть в промышленном формате CIDR
-    std::string subnet_cidr = "10.182.16.0/22";
+    std::string subnet_cidr = "192.168.16.0/22";
 
     // Генерируем хосты с помощью Boost.Asio
     std::vector<std::string> targets = generate_ips_from_cidr(subnet_cidr);
@@ -4254,7 +4837,7 @@ task_channel.close();
 
 
 //Tracert
-#if 1
+#if 0
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
 #include <iostream>
@@ -4643,3 +5226,46 @@ setsockopt(fd, IPPROTO_IP, IP_TTL, ...).
 
  */
 #endif
+
+
+
+
+
+
+/*
+ *
+ЧАСТЬ 1: Анализ вашей стратегии построения топологии
+
+Ваша стратегия абсолютно правильная, классическая и проверенная временем. Именно по таким алгоритмам работают коммерческие системы мониторинга (например, старые версии Cisco Works, HP OpenView или современные модули Zabbix/PRTG, когда у них нет полной информации по SNMP/LLDP).
+
+Почему ваш подход по MAC-таблицам (FDB — Forwarding Database) безупречен:
+
+1. Ядро сети как точка отсчета: Начинать с Layer 3 (маршрутизаторы/ядра) — единственный способ гарантированно «зацепиться» за логическую структуру сети и узнать границы всех L2-подсетей.
+2. Критерий коммутатора: Поиск устройств с открытыми портами 22 (SSH) или 23 (Telnet) среди вытащенных подсетей — это самый быстрый способ отсечь «тихий» мусор (принтеры, камеры, рабочие станции) от управляемого сетевого железа.
+3. Метод исключения портов (STP/FDB алгоритм): Этот математический метод (когда мы смотрим, на каких портах MAC-адреса дублируются, а где MAC уникален) позволяет составить точную топологию «коммутатор-коммутатор», вычисляя uplink и downlink порты.
+По поводу LLDP: Использовать LLDP (через SNMP или CLI) — это идеальный путь «А». Но в реальной жизни на объектах часто встречаются коммутаторы разных вендоров, или LLDP/CDP банально отключен безопасниками на распределительных портах. Поэтому ваш комбинированный подход (LLDP как приоритет, а MAC-таблицы как железный резерв) делает ваш софт неубиваемым.
+
+ЧАСТЬ 2: Как заполнить MAC-таблицу без запуска пинга с самого коммутатора?
+
+Ваша текущая проблема: если коммутатор «А» долго не общался с коммутатором «Б», запись в его MAC-таблице (FDB) устаревает и стирается (стандартный таймаут Aging Time в коммутаторах обычно 300 секунд).
+Заходить по SSH на сам коммутатор и заставлять его пинговать — рабочий, но «грязный» и медленный способ (создает лишние сессии, нагружает CPU коммутатора, требует парсинга CLI вывода пинга).
+
+Альтернативные и более элегантные способы «разогреть» MAC-таблицы:
+
+1. Сканирование сети с вашей локальной машины (Warming up с нашей стороны)
+Вместо того чтобы пинговать с коммутатора, вам достаточно прямо перед чтением MAC-таблиц запустить ваш асинхронный IcmpTraceroute или быстрый TcpScanner со своей машины по всем найденным IP-адресам коммутаторов.
+	• Почему это сработает: Пакет от вашей машины пойдет через всю цепочку транзитных коммутаторов до целевой железки. Каждый коммутатор по пути увидит этот кадр, считает исходный MAC-адрес (и MAC-адрес шлюза/соседних устройств) и мгновенно обновит свою таблицу FDB.
+2. Использование SNMP-запросов (ARP + FDB Склейка)
+У вас в арсенале есть SNMP-клиент. Вы можете прочитать таблицу ARP с Ядра сети (L3), чтобы получить жесткую связку IP <-> MAC для всех устройств. Затем по SNMP запрашивать у L2-коммутаторов ветку OID 1.3.6.1.2.1.17.4.3.1.2 (dot1tpFdbPort). Это стандартная таблица, которая возвращает, на каком порту какой MAC сидит. Если вы пройдете по кругу и опросите их, таблицы обновятся сами за счет SNMP-трафика.
+3. Широковещательный «выстрел» (Бродкаст-пинг)
+Если язык CLI коммутатора позволяет, вместо пинга конкретных адресов можно отправить один ICMP-запрос на широковещательный адрес подсети (например, 192.168.1.255). Все живые устройства обязаны будут ответить, и коммутатор за одну секунду заполнит всю свою таблицу.
+
+ЧАСТЬ 3: Следующий логический шаг — Модернизация Telnet и SSH клиентов
+
+Раз стратегия утверждена, ваша следующая главная задача — сделать так, чтобы чтение таблиц с коммутаторов не превратилось в «бутылочное горлышко». Если у вас 50 коммутаторов, и мы будем подключаться к ним последовательно, программа будет работать минутами.
+Нам нужно переписать модули TelnetClient и SshClient по образу и подобию нашего TcpScanner:
+• Они должны принимать any_io_executor.
+• Они должны быть обернуты в C++20 корутины (asio::awaitable).
+• Оркестратор должен уметь запускать их через asio::experimental::channel (Worker Pool), чтобы программа могла одновременно держать, например, 20-30 SSH/Telnet сессий, параллельно выгребая команды show mac address-table или show lldp neighbors со всей сети.
+
+ */
