@@ -1,5 +1,5 @@
 //Orchestrator
-#if 1
+#if 0
 /*class Orchestrator {
 public:
     explicit Orchestrator(asio::any_io_executor exec) : executor_(exec) {}
@@ -2732,7 +2732,7 @@ int main() {
 #endif
 
 //Telnet WorkerPool
-#if 1
+#if 0
 #pragma once
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/channel.hpp>
@@ -5269,3 +5269,221 @@ setsockopt(fd, IPPROTO_IP, IP_TTL, ...).
 • Оркестратор должен уметь запускать их через asio::experimental::channel (Worker Pool), чтобы программа могла одновременно держать, например, 20-30 SSH/Telnet сессий, параллельно выгребая команды show mac address-table или show lldp neighbors со всей сети.
 
  */
+
+
+
+#pragma once
+#include <cstdint>
+#include <string>
+
+namespace net_inventory {
+
+    using IdType = uint32_t;
+
+// ============================================================================
+// БЛОК 30. АДРЕСА И ВИЛАНЫ
+// ============================================================================
+
+// 30.40.20. Адреса подсетей (объединено с масками)
+    struct NetAddressRecord {
+        IdType id;                  // PK (IDNetIPAddress)
+        uint32_t net_ip;            // Адрес сети в host byte order
+        uint32_t mask;              // Маска сети в host byte order
+    };
+
+// 30.40.30. IP-адреса интерфейсов (без UNIQUE на поле ip)
+    struct IpAddressRecord {
+        IdType id;                  // PK (IDIPAddress)
+        uint32_t ip;                // Конкретный IP в host byte order
+        IdType net_id;              // FK -> NetAddressRecord::id (IDNetIPAddress)
+    };
+
+// 30.50.10. Виланы (L2-домены)
+    struct VlanRecord {
+        IdType id;                  // PK (IDVLAN) — суррогатный ключ
+        uint16_t vlan_tag;          // Номер тега 1..4094 (VLAN)
+    };
+
+// 30.60.10. MAC-адреса инфраструктуры (UNIQUE на поле mac)
+    struct MacAddressRecord {
+        IdType id;                  // PK (IDMACAddress)
+        uint64_t mac;               // 6 байт MAC в младших 48 битах (MACAddress)
+    };
+
+// ============================================================================
+// БЛОК 40. ИНТЕРФЕЙСЫ
+// ============================================================================
+
+// 40.10. Общий справочник типов портов
+    struct PortTypeRecord {
+        IdType id_type;             // PK (IDType)
+        std::string type_name;      // TypeName ("access", "trunk", "trunk_native", "map_mac", "routed")
+    };
+
+// 40.40.10. Адреса виланов концентраторов (SVI)
+    struct VlanIpAddressRecord {
+        IdType id;                  // PK (IDIDVLANIPAddress)
+        IdType vlan_id;             // FK -> VlanRecord::id (IDVLAN)
+        IdType ip_address_id;       // FK -> IpAddressRecord::id (IDVLANIPAddress)
+    };
+
+// --- 40.50. Физические порты ---
+
+// 40.50.10. Справочник имен физических портов
+    struct PhysicalPortNameRecord {
+        IdType id;                  // PK (IDPhysicalPortName)
+        std::string name;           // PhysicalPortName ("Gi1/0/1")
+    };
+
+// 40.50.20. Физические порты
+    struct PhysicalPortRecord {
+        IdType id;                  // PK (IDPhysicalPort)
+        IdType name_id;             // FK -> PhysicalPortNameRecord::id (IDPhysicalPortName)
+    };
+
+// 40.50.30. Общий список VLAN на физических портах
+    struct PhysicalPortVlanRecord {
+        IdType id;                  // PK (IDIDPhysicalPortVLAN)
+        IdType physical_port_id;    // FK -> PhysicalPortRecord::id (IDPhysicalPort)
+        IdType vlan_id;             // FK -> VlanRecord::id (IDVLAN)
+    };
+
+// 40.50.40. IP-адреса на физических L3-портах
+    struct PhysicalPortIpAddressRecord {
+        IdType id;                  // PK (IDIDPhysicalPortIPAddress)
+        IdType physical_port_id;    // FK -> PhysicalPortRecord::id (IDPhysicalPort)
+        IdType ip_address_id;       // FK -> IpAddressRecord::id (IDPhysicalPortIPAddress)
+    };
+
+// 40.50.50. Собственные MAC-адреса физических портов
+    struct PhysicalPortMacAddressRecord {
+        IdType id;                  // PK (IDIDPhysicalPortMACAddress)
+        IdType physical_port_id;    // FK -> PhysicalPortRecord::id (IDPhysicalPort)
+        IdType mac_address_id;      // FK -> MacAddressRecord::id (IDPhysicalPortMACAddress)
+    };
+
+// 40.50.60. Типы физических портов
+    struct PhysicalPortTypeRecord {
+        IdType id_physical_port;    // PK, FK -> PhysicalPortRecord::id (IDPhysicalPort)
+        IdType id_type;             // FK -> PortTypeRecord::id_type (IDType)
+    };
+
+// 40.50.70. Native VLAN на физических портах (расширение для trunk_native)
+    struct PhysicalPortNativeVlanRecord {
+        IdType id_physical_port;    // PK, FK -> PhysicalPortRecord::id (IDPhysicalPort)
+        IdType id_vlan;             // FK -> VlanRecord::id (IDVLAN)
+    };
+
+// --- 40.60. Порт-ченналы (LACP / EtherChannel) ---
+
+// 40.60.10. Справочник имен порт-ченналов
+    struct PortChannelNameRecord {
+        IdType id;                  // PK (IDPortChannelName)
+        std::string name;           // PortChannelName ("Po1")
+    };
+
+// 40.60.20. Порт-ченналы
+    struct PortChannelRecord {
+        IdType id;                  // PK (IDPortChannel)
+        IdType name_id;             // FK -> PortChannelNameRecord::id (IDPortChannelName)
+    };
+
+// 40.60.30. Состав порт-ченнала (связь М:М)
+    struct PortChannelMemberRecord {
+        IdType port_channel_id;     // PK, FK -> PortChannelRecord::id (IDPortChannel)
+        IdType physical_port_id;    // PK, FK -> PhysicalPortRecord::id (IDPhysicalPort)
+    };
+
+// 40.60.40. Общий список VLAN на порт-ченналах
+    struct PortChannelVlanRecord {
+        IdType id;                  // PK (IDPortChannelVLAN)
+        IdType port_channel_id;     // FK -> PortChannelRecord::id (IDPortChannel)
+        IdType vlan_id;             // FK -> VlanRecord::id (IDVLAN)
+    };
+
+// 40.60.50. IP-адреса на L3 порт-ченналах
+    struct PortChannelIpAddressRecord {
+        IdType id;                  // PK (IDIDPortChannelIPAddress)
+        IdType port_channel_id;     // FK -> PortChannelRecord::id (IDPortChannel)
+        IdType ip_address_id;       // FK -> IpAddressRecord::id (IDPortChannelIPAddress)
+    };
+
+// 40.60.60. Собственные MAC-адреса порт-ченналов
+    struct PortChannelMacAddressRecord {
+        IdType id;                  // PK (IDIDPortChannelMACAddress)
+        IdType port_channel_id;     // FK -> PortChannelRecord::id (IDPortChannel)
+        IdType mac_address_id;      // FK -> MacAddressRecord::id (IDPortChannelMACAddress)
+    };
+
+// 40.60.70. Типы порт-ченналов
+    struct PortChannelTypeRecord {
+        IdType id_port_channel;     // PK, FK -> PortChannelRecord::id (IDPortChannel)
+        IdType id_type;             // FK -> PortTypeRecord::id_type (IDType)
+    };
+
+// 40.60.80. Native VLAN на порт-ченналах (расширение для trunk_native)
+    struct PortChannelNativeVlanRecord {
+        IdType id_port_channel;     // PK, FK -> PortChannelRecord::id (IDPortChannel)
+        IdType id_vlan;             // FK -> VlanRecord::id (IDVLAN)
+    };
+
+// ============================================================================
+// БЛОК 50. КОНЦЕНТРАТОРЫ
+// ============================================================================
+
+// 50.40.10. Концентраторы (якорная таблица)
+    struct ConcentratorRecord {
+        IdType id;                  // PK (IDConcentrator)
+        IdType base_mac_id;         // FK -> MacAddressRecord::id (0 / NULL для неуправляемых хабов)
+    };
+
+// 50.40.20. Привязка SVI к концентратору
+    struct ConcentratorVlanIpRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        IdType vlan_ip_id;          // PK, FK -> VlanIpAddressRecord::id (IDIDVLANIPAddress)
+    };
+
+// 50.40.30. Привязка физических портов к концентратору
+    struct ConcentratorPhysicalPortRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        IdType physical_port_id;    // PK, FK -> PhysicalPortRecord::id (IDPhysicalPort)
+    };
+
+// 50.40.40. Привязка порт-ченналов к концентратору
+    struct ConcentratorPortChannelRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        IdType port_channel_id;     // PK, FK -> PortChannelRecord::id (IDPortChannel)
+    };
+
+// 50.40.50. Количество активных линков концентратора
+    struct ConcentratorLinksNumberRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        uint32_t links_number;      // LinksNumber
+    };
+
+// 50.40.60. Справочник протоколов доступа (SSH, Telnet)
+    struct AccessProtocolNameRecord {
+        IdType id;                  // PK (IDProtocolName)
+        std::string protocol_name;  // ProtocolName
+    };
+
+// 50.40.70. Доступные протоколы и порты управления концентратора
+    struct ConcentratorAccessProtocolRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        IdType protocol_name_id;    // PK, FK -> AccessProtocolNameRecord::id (IDProtocolName)
+        uint16_t port_number;       // PortNumber
+    };
+
+// 50.40.80. Маркер неуправляемых концентраторов / хабов
+    struct UnmanagedConcentratorRecord {
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+        std::string note;           // Причина обнаружения / комментарий
+    };
+
+// 50.50.10. Стэки концентраторов
+    struct ConcentratorStackRecord {
+        IdType stack_id;            // PK (IDConcentratorStack)
+        IdType concentrator_id;     // PK, FK -> ConcentratorRecord::id (IDConcentrator)
+    };
+
+} // namespace net_inventory
