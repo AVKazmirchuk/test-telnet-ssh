@@ -1,0 +1,227 @@
+//SSH WorkerPool
+#if 0
+#pragma once
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <memory>
+#include <libssh2.h>
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Структура задачи для воркера
+struct SshTask {
+    std::string ip;
+    std::string username;
+    std::string password;
+    std::string command;
+};
+
+// Структура результата выполнения
+struct SshResult {
+    std::string ip;
+    bool success = false;
+    std::string raw_output;
+    std::string error_message;
+};
+
+class SshWorkerPool {
+private:
+    asio::any_io_executor executor_;
+
+    // Вспомогательный метод ожидания сокета, перенесенный из вашего класса
+    asio::awaitable<bool> async_wait_socket(tcp::socket& socket, LIBSSH2_SESSION* session) {
+        int dir = libssh2_session_block_directions(session);
+        boost::system::error_code active_ec;
+
+        if (dir & LIBSSH2_SESSION_BLOCK_INBOUND) {
+            std::tie(active_ec) = co_await socket.async_wait(tcp::socket::wait_read, asio::as_tuple(asio::use_awaitable));
+        } else if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
+            std::tie(active_ec) = co_await socket.async_wait(tcp::socket::wait_write, asio::as_tuple(asio::use_awaitable));
+        }
+
+        co_return !active_ec; // Возвращаем true, если сокет жив
+    }
+
+    /**
+     * @brief Атомарная корутина выполнения одной CLI команды на одном коммутаторе (Взамен старой ssh_session_logic)
+     */
+    asio::awaitable<SshResult> execute_single_ssh(SshTask task, std::chrono::milliseconds timeout_ms) {
+        SshResult result;
+        result.ip = task.ip;
+
+        tcp::socket socket(executor_);
+        LIBSSH2_SESSION* session = nullptr;
+        LIBSSH2_CHANNEL* channel = nullptr;
+
+        try {
+            tcp::resolver resolver(executor_);
+            // Асингуем подключение TCP сокета
+            auto endpoints = co_await resolver.async_resolve(task.ip, "22", asio::use_awaitable);
+            co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+
+            // Инициализируем libssh2 сессию
+            session = libssh2_session_init();
+            if (!session) {
+                result.error_message = "Libssh2 init failed";
+                co_return result;
+            }
+
+            libssh2_session_set_blocking(session, 0);
+
+            int rc;
+            // Криптографическое рукопожатие
+            while ((rc = libssh2_session_handshake(session, socket.native_handle())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Handshake failed"; clean_up(session, channel); co_return result; }
+
+            // Аутентификация
+            while ((rc = libssh2_userauth_password(session, task.username.c_str(), task.password.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Auth rejected"; clean_up(session, channel); co_return result; }
+
+            // Открытие канала
+            while (!(channel = libssh2_channel_open_session(session))) {
+                if (libssh2_session_last_error(session, nullptr, nullptr, 0) != LIBSSH2_ERROR_EAGAIN) break;
+                if (!co_await async_wait_socket(socket, session)) { break; }
+            }
+            if (!channel) { result.error_message = "Channel open failed"; clean_up(session, channel); co_return result; }
+
+            // КЛЮЧЕВОЙ МОМЕНТ АВТОМАТИЗАЦИИ: Запускаем Exec-режим вместо Shell
+            while ((rc = libssh2_channel_exec(channel, task.command.c_str())) == LIBSSH2_ERROR_EAGAIN) {
+                if (!co_await async_wait_socket(socket, session)) { rc = -1; break; }
+            }
+            if (rc) { result.error_message = "Exec command failed"; clean_up(session, channel); co_return result; }
+
+            // Асинхронный сбор вывода (Модифицированный process_read)
+            std::vector<char> buffer(4096);
+            for (;;) {
+                ssize_t nread = libssh2_channel_read(channel, buffer.data(), buffer.size());
+                if (nread > 0) {
+                    // Конкатенируем данные в результирующий буфер
+                    result.raw_output.append(buffer.data(), nread);
+                } else if (nread == LIBSSH2_ERROR_EAGAIN) {
+                    if (!co_await async_wait_socket(socket, session)) break;
+                } else {
+                    // nread == 0 означает, что коммутатор выдал все данные и закрыл каналExec
+                    break;
+                }
+            }
+
+            result.success = true;
+        }
+        catch (const std::exception& e) {
+            result.error_message = std::string("Socket/Asio exception: ") + e.what();
+        }
+
+        clean_up(session, channel);
+        co_return result;
+    }
+
+    void clean_up(LIBSSH2_SESSION* session, LIBSSH2_CHANNEL* channel) {
+        if (channel) libssh2_channel_free(channel);
+        if (session) {
+            libssh2_session_disconnect(session, "Automation Shutdown");
+            libssh2_session_free(session);
+        }
+    }
+
+public:
+    explicit SshWorkerPool(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Запуск параллельного сбора таблиц со всей подсети коммутаторов (Паттерн Channel из TcpScanner)
+     */
+    asio::awaitable<std::vector<SshResult>> execute_parallel_commands(
+            const std::vector<SshTask>& tasks,
+            std::chrono::milliseconds timeout_ms,
+            size_t max_concurrent_workers)
+    {
+        std::vector<SshResult> total_results;
+
+        // Переносим наш проверенный паттерн трубы (Channel)
+        asio::experimental::channel<void(boost::system::error_code, SshTask)> task_channel(executor_, tasks.size());
+
+        // Наполняем трубу задачами
+        for (const auto& task : tasks) {
+            task_channel.try_send(boost::system::error_code{}, task);
+        }
+        task_channel.close(); // Фиксируем очередь
+
+        // Лямбда-воркер для пула
+        auto worker = [&](size_t worker_id, std::vector<SshResult>& shared_results) -> asio::awaitable<void> {
+            try {
+                for (;;) {
+                    boost::system::error_code ec;
+                    SshTask task = co_await task_channel.async_receive(asio::redirect_error(asio::use_awaitable, ec));
+
+                    if (ec == asio::experimental::channel_errc::channel_closed) {
+                        break; // Труба опустела, воркер штатно завершается
+                    }
+
+                    // Запускаем атомарную крипто-сессию к железке
+                    SshResult res = co_await execute_single_ssh(task, timeout_ms);
+
+                    // Сохраняем результат. (Так как мы в одном потоке io_context, push_back безопасен без мьютексов!)
+                    shared_results.push_back(res);
+                }
+            } catch (...) {}
+            co_return;
+        };
+
+        // Асинхронный барьер синхронизации (Latch на таймере)
+        auto remaining_workers = std::make_shared<size_t>(max_concurrent_workers);
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        // Спавним воркеров в планировщик
+        for (size_t i = 0; i < max_concurrent_workers; ++i) {
+            asio::co_spawn(executor_, [this, worker, i, &total_results, remaining_workers, wait_timer]() -> asio::awaitable<void> {
+                co_await worker(i, total_results);
+                (*remaining_workers)--;
+                if (*remaining_workers == 0) {
+                    wait_timer->cancel(); // Последний воркер будит вызывающую корутину
+                }
+                co_return;
+            }, asio::detached);
+        }
+
+        // Ждем завершения всех сессий
+        if (*remaining_workers > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        co_return total_results;
+    }
+};
+
+/*
+ *
+Что мы меняем для пула воркеров (Архитектурные правки):
+
+1. Убираем PTY Терминал и Shell: Вместо libssh2_channel_shell мы будем использовать libssh2_channel_exec(channel_, "show mac address-table"). Это отключает постраничный вывод (--More--), отключает эхо-повтор команд в буфер и снимает любые ограничения на ширину строк (терминал больше не будет принудительно резать таблицы по 160 символов).
+2. Накапливаем буфер ответа: Вместо вывода текста в std::cout через коллбек, корутина чтения будет аккуратно складывать все прилетающие чанки в одну строку std::string output_buffer, пока канал не закроется со стороны коммутатора (когда тот закончит отдавать таблицу).
+3. Удаляем клавиатуру и таймер-удерживатель: Воркер пула должен работать по принципу атомарной транзакции: Подключился -> Запустил Exec -> Выгреб весь текст до конца -> Закрылся -> Вернул строку.
+
+
+Архитектурный триумф интеграции:
+
+1. Симметрия кода: Метод execute_parallel_commands один в один повторяет логику вашего scan_subnet. Очередь задач запечатывается через .close(), а барьер на атомарном счетчике remaining_workers филигранно управляет ожиданием.
+2. Потокобезопасность без блокировок: Поскольку io_context у нас работает в один поток, воркеры складывают результаты в общий вектор shared_results.push_back(res) без мьютексов и критических секций. Никаких накладных расходов.
+3. Чистые данные: Замена libssh2_channel_shell на libssh2_channel_exec гарантирует, что в result.raw_output прилетит чистая, не порезанная на куски таблица MAC-адресов или LLDP-соседей. Парсить ее регулярными выражениями теперь будет одно удовольствие.
+
+Для того чтобы Оркестратор мог массово выгребать MAC-таблицы, нам нужно красиво связать результаты работы двух предыдущих этапов:
+1. Наш быстрый TcpScanner простукивает подсеть и находит «живые» IP-адреса, у которых открыт порт 22 (SSH). Это наш список целевых коммутаторов.
+2. Оркестратор берет эти IP-адреса, подставляет единые учетные данные (логин/пароль для доступа к железу) и нужную CLI-команду (например, для коммутаторов TFortis это обычно стандартная команда show mac-address-table или show mac address-table).
+
+
+
+ */
+#endif

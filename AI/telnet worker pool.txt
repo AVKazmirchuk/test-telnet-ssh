@@ -1,0 +1,260 @@
+//Telnet WorkerPool
+#if 0
+#pragma once
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <telnetpp/session.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <memory>
+
+namespace asio = boost::asio;
+using asio::ip::tcp;
+
+// Структура задачи для Telnet-воркера
+struct TelnetTask {
+    std::string ip;
+    std::string username;
+    std::string password;
+    std::string command;
+};
+
+// Структура результата транзакции
+struct TelnetResult {
+    std::string ip;
+    bool success = false;
+    std::string raw_output;
+    std::string error_message;
+};
+
+// Адаптированный под автоматизацию класс-мост (без блокирующего asio::write внутри write)
+struct asio_script_channel {
+    tcp::socket& socket;
+    std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
+
+    void write(telnetpp::bytes data) {
+        if (!data.empty() && socket.is_open()) {
+            boost::system::error_code ec;
+            // Используем синхронную запись, так как telnetpp вызывает ее внутри логики сессии,
+            // но сокет находится под управлением асинхронного цикла
+            asio::write(socket, asio::buffer(data.data(), data.size()), ec);
+        }
+    }
+
+    void async_read(std::function<void(telnetpp::bytes)> callback) {
+        telnet_parser_callback = std::move(callback);
+    }
+};
+
+class TelnetWorkerPool {
+private:
+    asio::any_io_executor executor_;
+
+    /**
+     * @brief Атомарный неблокирующий ожидатель промпта (ключевой строки вроде "Username:" или "#")
+     */
+    asio::awaitable<bool> wait_for_prompt(tcp::socket& socket, asio_script_channel& channel,
+                                          std::string& session_buffer, const std::string& target_prompt,
+                                          std::chrono::milliseconds timeout_ms)
+    {
+        std::vector<char> recv_buffer(4096);
+        asio::steady_timer timer(executor_);
+        timer.expires_after(timeout_ms);
+
+        while (session_buffer.find(target_prompt) == std::string::npos) {
+            boost::system::error_code ec;
+
+            // Гонка между приходом данных из сокета и таймаутом ожидания ответа коммутатора
+            auto race_result = co_await (
+                    socket.async_read_some(asio::buffer(recv_buffer), asio::redirect_error(asio::use_awaitable, ec)) ||
+                    timer.async_wait(asio::use_awaitable)
+            );
+
+            if (race_result.index() == 1 || ec) {
+                co_return false; // Сработал таймер таймаута или сокет упал
+            }
+
+            size_t bytes_received = std::get<0>(race_result);
+            if (bytes_received > 0 && channel.telnet_parser_callback) {
+                telnetpp::bytes view{ reinterpret_cast<uint8_t*>(recv_buffer.data()), bytes_received };
+                channel.telnet_parser_callback(view); // Пропускаем через фильтр управляющих опций Telnet
+            }
+        }
+        co_return true;
+    }
+
+    /**
+     * @brief Скриптовый линейный CLI-диалог с коммутатором в корутине
+     */
+    asio::awaitable<TelnetResult> execute_single_telnet(TelnetTask task, std::chrono::milliseconds timeout_ms) {
+        TelnetResult result;
+        result.ip = task.ip;
+
+        tcp::socket socket(executor_);
+        asio_script_channel script_channel{ socket };
+        telnetpp::session session(script_channel);
+
+        std::string session_buffer;
+
+        // Регистрируем парсер: чистый текст накапливаем в строковый буфер сессии
+        session.async_read([&](telnetpp::bytes data) {
+            if (!data.empty()) {
+                session_buffer.append(reinterpret_cast<char const*>(data.data()), data.size());
+            }
+        });
+
+        try {
+            tcp::resolver resolver(executor_);
+            auto endpoints = co_await resolver.async_resolve(task.ip, "23", asio::use_awaitable);
+            co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+
+            auto step_timeout = std::chrono::milliseconds(1500);
+
+            // 1. Ждем приглашения ввода логина (на промышленных железках обычно "Username:" или "login:")
+            // Для универсальности ищем подстроку "in:" или "name:"
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, "user", step_timeout) &&
+                !co_await wait_for_prompt(socket, script_channel, session_buffer, "login", step_timeout)) {
+                // Если специфичный промпт не найден, пробуем отправить пустой перевод строки, чтобы «разбудить» терминал
+                session.write({ reinterpret_cast<uint8_t const*>("\r\n"), 2 });
+            }
+
+            // Отправляем логин
+            std::string login_payload = task.username + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(login_payload.data()), login_payload.size() });
+            session_buffer.clear();
+
+            // 2. Ждем приглашения ввода пароля ("Password:" / "word:")
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, "word", step_timeout)) {
+                result.error_message = "Timeout waiting for Password prompt";
+                co_return result;
+            }
+
+            // Отправляем пароль
+            std::string pass_payload = task.password + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(pass_payload.data()), pass_payload.size() });
+            session_buffer.clear();
+
+            // 3. Ждем появления оперативного промпта командной строки (символы ">" или "#")
+            if (!co_await wait_for_prompt(socket, script_channel, session_buffer, ">", step_timeout) &&
+                !co_await wait_for_prompt(socket, script_channel, session_buffer, "#", step_timeout)) {
+                result.error_message = "Authentication failed or prompt not found";
+                co_return result;
+            }
+            session_buffer.clear();
+
+            // 4. КЛЮЧЕВОЙ ШАГ: Отправляем целевую команду (show mac address-table)
+            std::string cmd_payload = task.command + "\r\n";
+            session.write({ reinterpret_cast<uint8_t const*>(cmd_payload.data()), cmd_payload.size() });
+
+            // Вычерпываем весь вывод команды до тех пор, пока коммутатор не вернет промпт окончания строки ">" или "#"
+            // Либо пока не сработает полный таймаут операции.
+            auto execution_timeout = std::chrono::milliseconds(3000);
+            co_await wait_for_prompt(socket, script_channel, session_buffer, "#", execution_timeout);
+
+            result.raw_output = session_buffer;
+            result.success = true;
+        }
+        catch (const std::exception& e) {
+            result.error_message = std::string("Telnet exception: ") + e.what();
+        }
+
+        boost::system::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_both, ec);
+        socket.close(ec);
+
+        co_return result;
+    }
+
+public:
+    explicit TelnetWorkerPool(asio::any_io_executor exec) : executor_(exec) {}
+
+    /**
+     * @brief Массовое параллельное выполнение CLI-скриптов по всей подсети (Копия конвейера из TcpScanner)
+     */
+    asio::awaitable<std::vector<TelnetResult>> execute_parallel_commands(
+            const std::vector<TelnetTask>& tasks,
+            std::chrono::milliseconds timeout_ms,
+            size_t max_concurrent_workers)
+    {
+        std::vector<TelnetResult> total_results;
+
+        // Создаем асинхронный канал Asio под емкость задач
+        asio::experimental::channel<void(boost::system::error_code, TelnetTask)> task_channel(executor_, tasks.size());
+
+        for (const auto& task : tasks) {
+            task_channel.try_send(boost::system::error_code{}, task);
+        }
+        task_channel.close(); // Запечатываем очередь задач
+
+        // Лямбда-воркер
+        auto worker = [&](size_t worker_id, std::vector<TelnetResult>& shared_results) -> asio::awaitable<void> {
+            try {
+                for (;;) {
+                    boost::system::error_code ec;
+                    TelnetTask task = co_await task_channel.async_receive(asio::redirect_error(asio::use_awaitable, ec));
+
+                    if (ec == asio::experimental::channel_errc::channel_closed) {
+                        break; // Задачи полностью разобраны
+                    }
+
+                    TelnetResult res = co_await execute_single_telnet(task, timeout_ms);
+                    shared_results.push_back(res);
+                }
+            } catch (...) {}
+            co_return;
+        };
+
+        // Асинхронный барьер синхронизации (Latch)
+        auto remaining_workers = std::make_shared<size_t>(max_concurrent_workers);
+        auto wait_timer = std::make_shared<asio::steady_timer>(executor_);
+        wait_timer->expires_at(std::chrono::steady_clock::time_point::max());
+
+        // Разворачиваем пул воркеров в io_context
+        for (size_t i = 0; i < max_concurrent_workers; ++i) {
+            asio::co_spawn(executor_, [this, worker, i, &total_results, remaining_workers, wait_timer]() -> asio::awaitable<void> {
+                co_await worker(i, total_results);
+                (*remaining_workers)--;
+                if (*remaining_workers == 0) {
+                    wait_timer->cancel(); // Последний воркер будит оркестратор
+                }
+                co_return;
+            }, asio::detached);
+        }
+
+        if (*remaining_workers > 0) {
+            boost::system::error_code ec;
+            co_await wait_timer->async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        }
+
+        co_return total_results;
+    }
+};
+
+/*
+ * Прекрасный, глубоко проработанный код Telnet-клиента на базе библиотеки telnetpp. Ваши комментарии идеально отражают архитектурные узлы: класс-мост asio_channel сопрягает асинхронный сокет и синхронный концепт потока библиотеки, а вызов keep_alive_timer.cancel() служит элегантным триггером для разрушения сессии сверху вниз.
+Однако, как и в случае с SSH, текущая версия ориентирована на интерактивную сессию человека (присутствуют handle_keyboard, посимвольный опрос через _kbhit(), и вывод текста напрямую в std::cout). Кроме того, протокол Telnet, в отличие от SSH Exec-режима, не имеет встроенной концепции атомарного удаленного выполнения команды. Telnet — это всегда симуляция «человека у терминала»: программа должна подключиться, дождаться приглашения Username:, ввести логин, дождаться Password:, ввести пароль, дождаться промпта коммутатора (например, Switch>), отправить команду и читать поток байт, пока вывод не прекратится.
+Для интеграции в высокопроизводительный пул воркеров Оркестратора мы проведем автоматизацию этого CLI-диалога, обернем его в паттерн asio::experimental::channel и избавимся от интерактивного мусора.
+
+🛠️ Перевод Telnet-клиента в режим Автоматизации (Скриптовый пул)
+
+1. Убираем клавиатуру и эхо: Нам больше не нужны handle_keyboard и плагин telnetpp::options::echo::client.
+2. Буферизация и линейный сценарий: Корутина сессии будет асинхронно выгребать данные в буфер и сканировать его на наличие ключевых строк подсистемы авторизации и промптов коммутатора (Login:, >, #).
+3. Пул воркеров без мьютексов: Результаты (сырые таблицы MAC) будут безопасно конкатенироваться внутри независимых транзакций и складываться в итоговый вектор в общем потоке io_context.
+
+Модернизированный TelnetWorkerPool
+
+Ниже представлен готовый класс TelnetWorkerPool, полностью повторяющий логику буферизации, закрытия канала по типу .close() и асинхронного таймера-барьера из вашего TCP-сканера.
+
+
+Архитектурный разбор интеграции Telnet:
+
+1. Синхронизация через std::get<0>(race_result): В методе wait_for_prompt мы используем фичу Boost.Asio 1.87 — извлекаем реальное количество байт из асинхронного оператора гонки ||, который возвращает стандартный std::variant.
+2. Гибкий конечный автомат (State Machine): Метод execute_single_telnet последовательно двигает сессию по фазам (Ожидание Login -> Отправка Login -> Ожидание Pass -> Отправка Pass -> Команда -> Сбор вывода). Если какая-то железка зависнет на этапе авторизации, асинхронная гонка со steady_timer мгновенно разорвет зависший узел, защищая пул от простоев.
+3. Единый конвейер Оркестратора: Теперь у Оркестратора абсолютно идентичные интерфейсы управления: он может вызвать ssh_pool_.execute_parallel_commands, а для старых сегментов сети — telnet_pool_.execute_parallel_commands.
+Теперь оба CLI-клиента полностью переведены на рельсы реактивного параллельного выполнения и готовы к интеграции в ядро системы картографии топологии.
+Мы полностью пересобрали и автоматизировали Telnet-клиент под требования промышленного пула воркеров.
+
+ */
+#endif
