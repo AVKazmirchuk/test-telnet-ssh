@@ -5229,9 +5229,8 @@ setsockopt(fd, IPPROTO_IP, IP_TTL, ...).
 
 
 
-
-
-
+//Table
+#if 0
 /*
  *
 ЧАСТЬ 1: Анализ вашей стратегии построения топологии
@@ -5487,3 +5486,110 @@ namespace net_inventory {
     };
 
 } // namespace net_inventory
+#endif
+
+
+
+#include "DeviceWorkerTypes.h"
+#include "Orchestrator.h"
+#include "SshWorkerPool.h"
+#include "TcpScanner.h"
+#include "TelnetWorkerPool.h"
+#include "VendorParser.h"
+// Подключите ваш заголовочный файл с LocalConfigProvider (из localNetworkConfig.txt)
+// #include "LocalConfigProvider.hpp"
+
+#include <boost/asio.hpp>
+#include <iostream>
+#include <memory>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+    namespace asio = boost::asio;
+    using namespace net_discovery;
+
+// Вспомогательный перевод uint32_t IP (host byte order) в строку для вывода в консоль
+    std::string u32_to_ip_str(uint32_t ip) {
+        return asio::ip::address_v4(ip).to_string();
+    }
+
+    asio::awaitable<void> run_factory_discovery_test() {
+        auto exec = co_await asio::this_coro::executor;
+
+        // 1. Формируем стартовую точку разведки
+        // Вариант А: Автоматически из вашего LocalConfigProvider (берём активный адаптер и его подсеть)
+        std::vector<SubnetTarget> initial_subnets;
+
+        /*
+        // Пример связки с вашим LocalConfigProvider:
+        auto local_adapters = LocalConfigProvider::get_active_adapters();
+        for (const auto& adapter : local_adapters) {
+            if (adapter.has_gateway) {
+                uint32_t ip_u32   = asio::ip::make_address_v4(adapter.ip).to_uint();
+                uint32_t mask_u32 = asio::ip::make_address_v4(adapter.mask).to_uint();
+                uint32_t net_u32  = ip_u32 & mask_u32;
+                initial_subnets.push_back(SubnetTarget{ net_u32, mask_u32, "LocalAdapter: " + adapter.name });
+            }
+        }
+        */
+
+        // Вариант Б (для быстрого ручного старта в понедельник): укажите подсеть управления или подсеть шлюза
+        if (initial_subnets.empty()) {
+            uint32_t start_net  = asio::ip::make_address_v4("192.168.16.0").to_uint();
+            uint32_t start_mask = asio::ip::make_address_v4("255.255.252.0").to_uint(); // /22
+            initial_subnets.push_back(SubnetTarget{ start_net, start_mask, "Manual Start Subnet" });
+        }
+
+        std::cout << "=== СТАРТ РАЗВЕДКИ ТОПОЛОГИИ ЗАВОДА ===\n";
+        for (const auto& s : initial_subnets) {
+            std::cout << "Стартовая подсеть: " << u32_to_ip_str(s.net_ip)
+                      << " / маска " << u32_to_ip_str(s.mask)
+                      << " (" << s.source_info << ")\n";
+        }
+
+        // 2. Инициализируем все модули движка
+        auto scanner     = std::make_shared<TcpScanner>(exec);
+        auto ssh_pool    = std::make_shared<SshWorkerPool>(exec);
+        auto telnet_pool = std::make_shared<TelnetWorkerPool>(exec);
+        auto parser      = std::make_shared<UniversalDeviceParser>();
+
+        // Учётные данные для опроса коммутаторов (Eltex / TFortis / SNR)
+        Credentials creds;
+        creds.username = "admin";
+        creds.password = "password";
+
+        // 3. Создаём Оркестратор и запускаем полный цикл (Фаза 1: BFS -> Фаза 2: FDB)
+        Orchestrator orchestrator(exec, scanner, ssh_pool, telnet_pool, parser, creds);
+
+        auto t_start = std::chrono::steady_clock::now();
+        co_await orchestrator.run_discovery(initial_subnets);
+        auto t_end = std::chrono::steady_clock::now();
+
+        auto elapsed_sec = std::chrono::duration_cast<std::chrono::seconds>(t_end - t_start).count();
+        std::cout << "\n=== РАЗВЕДКА ЗАВЕРШЕНА ЗА " << elapsed_sec << " СЕК. ===\n";
+
+        co_return;
+    }
+
+    int main() {
+#ifdef _WIN32
+        SetConsoleOutputCP(65001);
+        SetConsoleCP(65001);
+#endif
+
+        try {
+            asio::io_context io_ctx;
+            asio::co_spawn(io_ctx, run_factory_discovery_test(), asio::detached);
+            io_ctx.run();
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[FATAL ERROR] " << e.what() << "\n";
+            return 1;
+        }
+
+        return 0;
+    }
+

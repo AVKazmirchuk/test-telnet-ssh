@@ -11,6 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Отключить расширения компилятора
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+
+
 # Поместить все целевые файлы RUNTIME при сборке
 set(Runtime_Output_Directory "../../runtime")
 
@@ -49,6 +51,10 @@ find_package(telnetpp REQUIRED)
 
 
 add_subdirectory(src)
+
+if(MINGW)
+    target_compile_options(test_telnet_ssh PRIVATE -Wa,-mbig-obj)
+endif()
 
 # Указать библиотеки, которые нужно использовать при компоновке заданной цели и/или её зависимостей
 target_link_libraries(${Application_Name} PRIVATE ws2_32)
