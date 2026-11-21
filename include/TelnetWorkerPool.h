@@ -20,6 +20,7 @@ namespace net_discovery {
     using asio::ip::tcp;
     using namespace asio::experimental::awaitable_operators;
 
+    // Адаптированный под автоматизацию класс-мост (без блокирующего asio::write внутри write)
     struct asio_script_channel {
         tcp::socket& socket;
         std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
@@ -27,6 +28,8 @@ namespace net_discovery {
         void write(telnetpp::bytes data) {
             if (!data.empty() && socket.is_open()) {
                 boost::system::error_code ec;
+                // Используем синхронную запись, так как telnetpp вызывает ее внутри логики сессии,
+                // но сокет находится под управлением асинхронного цикла
                 asio::write(socket, asio::buffer(data.data(), data.size()), ec);
             }
         }
@@ -53,6 +56,8 @@ namespace net_discovery {
         asio::any_io_executor executor_;
 
         // Регистронезависимый поиск любого из ожидаемых промптов в конце/теле буфера
+        // Регистронезависимый поиск хотя бы одного ожидаемого приглашения CLI (из списка prompts) в накопленном буфере ответа.
+        // Позволяет одновременно ловить варианты разных вендоров ("Username:", "login:", "Password:", "#", ">") независимо от регистра букв
         static bool contains_any_prompt_icase(const std::string& buffer, const std::vector<std::string>& prompts) {
             std::string lower_buf = buffer;
             std::transform(lower_buf.begin(), lower_buf.end(), lower_buf.begin(),
@@ -70,6 +75,8 @@ namespace net_discovery {
         }
 
         // Очистка и пролистывание постраничного вывода (--More--)
+        // Обработчик постраничного вывода (пейджера): если коммутатор приостановил вывод маркером "--More--",
+        // вырезает этот маркер из буфера (чтобы не портить парсинг таблиц) и отправляет пробел (" ") для загрузки следующей страницы
         static bool handle_pager_if_present(std::string& buffer, telnetpp::session& session) {
             // Ищем типичные маркеры пейджера Cisco/Huawei/Eltex/D-Link
             const std::vector<std::string> pagers = { "--More--", "-- More --", "---- More ----", "Next Page" };
@@ -89,6 +96,8 @@ namespace net_discovery {
         /**
          * @brief Неблокирующее ожидание любого промпта из списка с автопролистыванием --More--
          */
+        // Асинхронный цикл чтения вывода из Telnet-сессии до появления любого ожидаемого приглашения из target_prompts.
+        // Фильтрует управляющие байты Telnet через telnetpp, автоматически пролистывает "--More--" и защищён общим таймаутом
         asio::awaitable<bool> wait_for_any_prompt(
                 tcp::socket& socket,
                 asio_script_channel& channel,
@@ -130,6 +139,8 @@ namespace net_discovery {
         /**
          * @brief Скриптовый CLI-диалог с поддержкой прогрева FDB и нестандартных портов
          */
+        // Полный сценарий работы с одним коммутатором в рамках одной Telnet-сессии:
+        // TCP-подключение -> авторизация (Login/Password) -> [опционально: ping прогрева + пауза] -> выполнение целевой CLI-команды и сбор вывода
         asio::awaitable<DeviceResult> execute_single_telnet(DeviceTask task, std::chrono::milliseconds timeout_ms) {
             DeviceResult result;
             result.ip = task.ip;
@@ -240,6 +251,8 @@ namespace net_discovery {
     public:
         explicit TelnetWorkerPool(asio::any_io_executor exec) : executor_(exec) {}
 
+        // Диспетчер параллельного Telnet-опроса: помещает все задачи в закрытый канал Asio, запускает пул из
+        // max_concurrent_workers корутин-воркеров для одновременного опроса коммутаторов и ждёт завершения всей группы
         asio::awaitable<std::vector<DeviceResult>> execute_parallel_commands(
                 const std::vector<DeviceTask>& tasks,
                 std::chrono::milliseconds timeout_ms,

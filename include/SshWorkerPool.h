@@ -19,6 +19,7 @@ namespace net_discovery {
 
     class SshWorkerPool : public IDeviceWorkerPool {
     private:
+        // Ссылка на планировщик асинхронных событий (io_context), в потоке которого работают сокеты и таймеры сканера
         asio::any_io_executor executor_;
 
         // Вспомогательная корутина неблокирующего чтения всего вывода одного exec-канала
@@ -28,6 +29,8 @@ namespace net_discovery {
                 const std::string& command,
                 std::string& out_error)
         {
+            // Неблокирующее открытие логического канала внутри SSH-сессии для выполнения команды.
+            // Если ответ от коммутатора ещё не пришёл (EAGAIN), корутина засыпает до появления данных в сокете, не блокируя поток
             LIBSSH2_CHANNEL* channel = nullptr;
             while ((channel = libssh2_channel_open_session(session)) == nullptr) {
                 if (libssh2_session_last_error(session, nullptr, nullptr, 0) == LIBSSH2_ERROR_EAGAIN) {
@@ -39,6 +42,8 @@ namespace net_discovery {
             }
 
             // Гарантированное закрытие канала при выходе
+            // Автоматический «охранник» ресурса (RAII): при любом выходе из корутины (успех, ошибка или отмена по таймауту)
+            // гарантированно вызовет переданную функцию-очиститель и освободит память C-структуры канала libssh2
             auto channel_guard = std::unique_ptr<LIBSSH2_CHANNEL, void(*)(LIBSSH2_CHANNEL*)>(
                     channel, [](LIBSSH2_CHANNEL* ch) {
                         if (ch) {
@@ -47,6 +52,8 @@ namespace net_discovery {
                         }
                     });
 
+            // Неблокирующая отправка команды в режиме exec (без интерактивного терминала и без пауз --More--).
+            // Код 0 — коммутатор принял команду к выполнению; EAGAIN — ждём сетевого обмена
             int rc = 0;
             while ((rc = libssh2_channel_exec(channel, command.c_str())) == LIBSSH2_ERROR_EAGAIN) {
                 co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
@@ -56,6 +63,8 @@ namespace net_discovery {
                 co_return std::make_pair(false, std::string{});
             }
 
+            // Неблокирующее вычитывание всего вывода команды порциями по 4 КБ до закрытия канала коммутатором (bytes == 0 / EOF).
+            // Если очередная порция пакетов ещё в пути (EAGAIN), корутина засыпает на сокете, не блокируя поток
             std::string output;
             char buffer[4096];
             for (;;) {
@@ -76,6 +85,9 @@ namespace net_discovery {
         }
 
         // Основная логика одной SSH-транзакции (без внешнего таймера)
+        // Полный сценарий работы с одним коммутатором в рамках одной SSH-сессии:
+        // TCP-подключение -> крипто-handshake -> авторизация -> [опционально: ping прогрева + пауза] -> выполнение целевой команды.
+        // Внешний таймаут накладывается уровнем выше в execute_single_ssh
         asio::awaitable<DeviceResult> execute_ssh_core(DeviceTask task, std::shared_ptr<tcp::socket> socket_ptr) {
             DeviceResult result;
             result.ip = task.ip;
@@ -85,10 +97,15 @@ namespace net_discovery {
             LIBSSH2_SESSION* session = nullptr;
 
             try {
+
+                // Неблокирующее для потока ОС разрешение адреса и установка TCP-соединения с коммутатором:
+                // текущая корутина приостанавливается на co_await до завершения рукопожатия TCP, уступая CPU другим воркерам
                 tcp::resolver resolver(executor_);
                 auto endpoints = co_await resolver.async_resolve(task.ip, std::to_string(task.port), asio::use_awaitable);
                 co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
 
+                // Создаём объект SSH-сессии и переводим её в неблокирующий режим (0):
+                // вместо заморозки потока при ожидании сети функции будут возвращать EAGAIN для передачи управления корутине
                 session = libssh2_session_init();
                 if (!session) {
                     result.error_message = "Failed to init libssh2 session";
@@ -155,7 +172,10 @@ namespace net_discovery {
         }
 
         // Обёртка с жёстким общим таймаутом на всю сессию (гонка ||)
+        // Обёртка-предохранитель с жёстким общим таймаутом на всю SSH-сессию (гонка execute_ssh_core || timer).
+        // Если свитч завис на любом этапе, таймер принудительно закрывает сокет извне, сворачивает корутину и освобождает воркер
         asio::awaitable<DeviceResult> execute_single_ssh(DeviceTask task, std::chrono::milliseconds timeout_ms) {
+
             auto socket_ptr = std::make_shared<tcp::socket>(executor_);
             asio::steady_timer timeout_timer(executor_);
             timeout_timer.expires_after(timeout_ms);
@@ -194,6 +214,8 @@ namespace net_discovery {
             libssh2_exit();
         }
 
+        // Диспетчер параллельного опроса: помещает все задачи в закрытый канал Asio, запускает пул из
+        // max_concurrent_workers корутин-воркеров для одновременного опроса устройств и ждёт завершения всей группы
         asio::awaitable<std::vector<DeviceResult>> execute_parallel_commands(
                 const std::vector<DeviceTask>& tasks,
                 std::chrono::milliseconds timeout_ms,

@@ -38,10 +38,12 @@ namespace net_discovery {
         std::vector<uint16_t> open_ports; // Например: {22}, {23} или {22, 23}
     };
 
+    // Результат сканирования подсети (исходная подсеть, список живых хостов с открытыми портами и свободный IP-маяк)
     struct SubnetScanResult {
         SubnetTarget subnet;
         std::vector<DiscoveredHost> alive_hosts;
-        std::optional<std::string> free_beacon_ip; // Первый свободный IP для провокации Broadcast ARP
+        // Первый свободный IP-адрес в подсети (маяк для провокации ARP); std::nullopt, если все адреса заняты
+        std::optional<std::string> free_beacon_ip;
     };
 
 // Результат разбора конфигурации одного устройства (выход парсера в Фазе 1)
@@ -121,11 +123,15 @@ namespace net_discovery {
         // Белый список собственных MAC-адресов всех найденных концентраторов
         std::unordered_set<uint64_t> concentrator_white_macs_;
 
+        // Упаковывает 32-битный адрес сети и 32-битную маску в единый 64-битный ключ (старшие 32 бита — сеть, младшие — маска)
+        // для мгновенного поиска уже посещённых подсетей в std::unordered_set
         static uint64_t make_subnet_key(const SubnetTarget& s) noexcept {
             return (static_cast<uint64_t>(s.net_ip) << 32) | static_cast<uint64_t>(s.mask);
         }
 
         // Разделение найденных хостов на задачи для SSH (приоритет) и Telnet
+        // Распределяет найденные живые хосты между пулами SSH (приоритет) и Telnet,
+        // отсекая уже опрошенные IP (visited_ips_) и подставляя учётные данные для подключения
         void dispatch_tasks_by_protocol(
                 const std::vector<DiscoveredHost>& hosts,
                 const std::string& command,
@@ -183,6 +189,9 @@ namespace net_discovery {
          * @brief Запуск полного цикла разведки сети (Фаза 1: BFS по L2-доменам -> Фаза 2: Сбор FDB)
          */
         asio::awaitable<void> run_discovery(const std::vector<SubnetTarget>& initial_subnets) {
+
+            // Очередь (FIFO) подсетей, ожидающих сканирования в рамках алгоритма поиска в ширину (BFS);
+            // пополняется по мере обнаружения новых локальных подсетей на L3-маршрутизаторах
             std::deque<SubnetTarget> subnet_queue;
 
             for (const auto& s : initial_subnets) {
@@ -193,6 +202,8 @@ namespace net_discovery {
             }
 
             // Список замкнутых L2-доменов для последующего прогрева и снятия FDB
+            // Сформированный L2-домен с зафиксированными границами: содержит саму подсеть, свободный IP-маяк
+            // для провокации ARP и полный список всех обнаруженных в этом сегменте коммутаторов для Фазы 2
             struct L2DomainBatch {
                 SubnetTarget subnet;
                 std::optional<std::string> beacon_ip;
@@ -272,6 +283,8 @@ namespace net_discovery {
 
                     // Если устройство является L3-границей (маршрутизатором),
                     // добавляем его новые локальные подсети в очередь BFS
+                    // Если парсер определил устройство как L3-маршрутизатор (извлек из его конфига 2+ подсети или маршруты),
+                    // перебираем все найденные на его интерфейсах локальные подсети (cfg.connected_subnets) и ставим ещё не посещённые в очередь BFS
                     if (cfg.is_l3_router) {
                         for (const auto& next_sub : cfg.connected_subnets) {
 

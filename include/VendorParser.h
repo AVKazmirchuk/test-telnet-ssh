@@ -30,8 +30,14 @@ namespace net_discovery {
         std::string fdb_command;        // Команда чтения MAC-таблицы (Фаза 2)
     };
 
+    // Универсальный парсер вывода CLI и менеджер профилей вендоров (Eltex, TFortis, SNR, UserGate).
+    // Автоматически распознаёт производителя по тексту ответа, формирует вендор-зависимые команды
+    // и преобразует сырые конфигурации и таблицы FDB/ARP в единые структуры данных Orchestrator
     class UniversalDeviceParser : public IDeviceOutputParser {
     private:
+
+        // Словарь профилей оборудования: ключ — строковый ID вендора ("eltex_mes", "tfortis", "usergate" и т.д.),
+        // значение — структура VendorProfile с набором CLI-команд для этого производителя
         std::unordered_map<std::string, VendorProfile> profiles_;
 
         static std::string to_lower(std::string s) {
@@ -202,6 +208,8 @@ namespace net_discovery {
 
             // 3. Универсальные маркеры L3-маршрутизатора:
             // Более 1 локальной подсети ИЛИ наличие маршрутов (кроме дефолтного 0.0.0.0) / включённый ip routing
+            // Поиск признаков реальной L3-маршрутизации: статические маршруты в конкретные подсети (исключая обычный
+            // шлюз по умолчанию "ip route 0.0.0.0 0.0.0.0", который есть почти на каждом L2-свитче) или протоколы OSPF/BGP
             bool has_routing_entries = (raw_output.find("ip route ") != std::string::npos &&
                                         raw_output.find("ip route 0.0.0.0 0.0.0.0") == std::string::npos) ||
                                        (raw_output.find("router ospf") != std::string::npos) ||
@@ -212,6 +220,8 @@ namespace net_discovery {
             return cfg;
         }
 
+        // Формирует готовую команду ping для провокации ARP: берёт шаблон из профиля вендора
+        // (или стандартный "ping {IP} count 1", если вендор не найден) и подставляет целевой IP-адрес вместо "{IP}"
         std::string build_ping_command(const std::string& vendor, const std::string& target_ip) const override {
             auto it = profiles_.find(vendor);
             std::string tpl = (it != profiles_.end()) ? it->second.ping_template : "ping {IP} count 1";
@@ -222,6 +232,8 @@ namespace net_discovery {
             return tpl;
         }
 
+        // Возвращает вендор-зависимую команду чтения таблицы MAC-адресов (FDB) или ARP из профиля производителя
+        // (если профиль не найден, возвращает стандартную команду "show mac address-table")
         std::string build_fdb_command(const std::string& vendor) const override {
             auto it = profiles_.find(vendor);
             return (it != profiles_.end()) ? it->second.fdb_command : "show mac address-table";
