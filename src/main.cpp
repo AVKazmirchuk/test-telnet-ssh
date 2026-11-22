@@ -5557,12 +5557,25 @@ namespace net_inventory {
         auto parser      = std::make_shared<UniversalDeviceParser>();
 
         // Учётные данные для опроса коммутаторов (Eltex / TFortis / SNR)
-        Credentials creds;
-        creds.username = "admin";
-        creds.password = "password";
+        std::vector<CredentialProfile> cred_profiles = {
+                // 1. Индивидуальный профиль для UserGate (своя стартовая команда и свой пароль)
+                CredentialProfile{
+                        "ug_admin",
+                        "ug_secret_pass",
+                        "192.168.16.1",           // IP вашего UserGate
+                        "show network interface"  // Команда чтения интерфейсов UGOS
+                },
+                // 2. Общий профиль по умолчанию для всех остальных коммутаторов (Eltex / SNR / TFortis)
+                CredentialProfile{
+                        "admin",
+                        "switch_pass",
+                        std::nullopt,             // Применяется ко всем остальным IP
+                        "show running-config"
+                }
+        };
 
         // 3. Создаём Оркестратор и запускаем полный цикл (Фаза 1: BFS -> Фаза 2: FDB)
-        Orchestrator orchestrator(exec, scanner, ssh_pool, telnet_pool, parser, creds);
+        Orchestrator orchestrator(exec, scanner, ssh_pool, telnet_pool, parser, cred_profiles);
 
         auto t_start = std::chrono::steady_clock::now();
         co_await orchestrator.run_discovery(initial_subnets);
