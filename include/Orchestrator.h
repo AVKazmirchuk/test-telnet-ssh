@@ -141,16 +141,25 @@ namespace net_discovery {
 
     class Orchestrator {
     private:
+        //Экзекутор
         asio::any_io_executor executor_;
+        //Сканер сети
         std::shared_ptr<ISubnetScanner> scanner_;
+        //Пул воркеров опроса по SSH
         std::shared_ptr<IDeviceWorkerPool> ssh_pool_;
+        //Пул воркеров опроса по Telnet
         std::shared_ptr<IDeviceWorkerPool> telnet_pool_;
+        //Парсер  ответов CLI и генератора вендор-зависимых команд
         std::shared_ptr<IDeviceOutputParser> parser_;
+        //Профиль учётных данных
         std::vector<CredentialProfile> cred_profiles_;
+        //Настройки таймаутов и параметров пулов разведки
         DiscoveryConfig config_;
 
         // Защита от повторного сканирования и зацикливания (ключ = (uint64_t(net_ip) << 32) | mask)
+        //Посещённые сети
         std::unordered_set<uint64_t> visited_subnets_;
+        //Обработанные адреса
         std::unordered_set<std::string> visited_ips_;
 
         // Кэш разведанных устройств по IP
@@ -253,7 +262,7 @@ namespace net_discovery {
             return collected_fdb_records_;
         }
 
-        //ПОлучить кэш разведанных устройств по IP
+        //Получить кэш разведанных устройств по IP
         const std::unordered_map<std::string, ParsedDeviceConfig>& get_discovered_devices() const noexcept {
             return discovered_devices_;
         }

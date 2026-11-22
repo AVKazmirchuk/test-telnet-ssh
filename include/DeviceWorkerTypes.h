@@ -30,7 +30,9 @@ namespace net_discovery {
         // Опциональный шаг прогрева FDB (используется в Фазе 2):
         // Если задан — воркер сначала выполняет warmup_command (например, ping свободного IP),
         // затем асинхронно ждёт warmup_delay и только потом выполняет основную command.
+        //Команда прогрева (ping)
         std::optional<std::string> warmup_command = std::nullopt;
+        //Время ожидания после прогрева до выполнения основной команды
         std::chrono::milliseconds warmup_delay{2500};
     };
 
@@ -48,6 +50,7 @@ namespace net_discovery {
     public:
         virtual ~IDeviceWorkerPool() = default;
 
+        //Запустить параллельное выполнение команд
         virtual asio::awaitable<std::vector<DeviceResult>> execute_parallel_commands(
                 const std::vector<DeviceTask>& tasks,
                 std::chrono::milliseconds timeout_ms,

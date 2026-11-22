@@ -20,11 +20,14 @@ namespace net_discovery {
     using asio::ip::tcp;
     using namespace asio::experimental::awaitable_operators;
 
-    // Адаптированный под автоматизацию класс-мост (без блокирующего asio::write внутри write)
+    // Адаптер канала (Channel) между Boost.Asio и telnetpp::session для автоматизации без внутреннего цикла чтения
     struct asio_script_channel {
+        // Ссылка на активный TCP-сокет Boost.Asio, через который отправляются управляющие ответы протокола Telnet
         tcp::socket& socket;
+        // Колбэк внутреннего парсера telnetpp: сохраняется при вызове async_read и вызывается вручную из нашей корутины при получении байтов из сокета
         std::function<void(telnetpp::bytes)> telnet_parser_callback = nullptr;
 
+        // Колбэк исходящих данных для telnetpp: отправляет в сокет служебные пакеты согласования опций Telnet (WILL/WONT/DO/DONT)
         void write(telnetpp::bytes data) {
             if (!data.empty() && socket.is_open()) {
                 boost::system::error_code ec;
@@ -34,14 +37,18 @@ namespace net_discovery {
             }
         }
 
+        // Регистрация приёмного колбэка от telnetpp::session: вместо запуска фонового чтения сохраняет обработчик,
+        // чтобы корутина wait_for_any_prompt сама передавала в него прочитанные из сокета байты
         void async_read(std::function<void(telnetpp::bytes)> callback) {
             telnet_parser_callback = std::move(callback);
         }
 
+        // Проверка активности соединения (требуется концептом канала telnetpp): возвращает true, пока TCP-сокет открыт
         bool is_alive() const {
             return socket.is_open();
         }
 
+        // Штатное закрытие канала со стороны telnetpp: корректно завершает приём/передачу (shutdown) и закрывает сокет без исключений
         void close() {
             if (socket.is_open()) {
                 boost::system::error_code ec;
@@ -51,6 +58,7 @@ namespace net_discovery {
         }
     };
 
+    //Пул воркеров опроса узлов по Telnet
     class TelnetWorkerPool : public IDeviceWorkerPool {
     private:
         asio::any_io_executor executor_;

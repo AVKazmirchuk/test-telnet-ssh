@@ -17,6 +17,7 @@ namespace net_discovery {
     using asio::ip::tcp;
     using namespace asio::experimental::awaitable_operators;
 
+    //Пул воркеров опроса узлов по SSH
     class SshWorkerPool : public IDeviceWorkerPool {
     private:
         // Ссылка на планировщик асинхронных событий (io_context), в потоке которого работают сокеты и таймеры сканера
@@ -206,6 +207,8 @@ namespace net_discovery {
         }
 
     public:
+
+        //Инициализирует библиотеку libssh
         explicit SshWorkerPool(asio::any_io_executor exec) : executor_(exec) {
             libssh2_init(0);
         }
