@@ -5567,8 +5567,8 @@ namespace net_inventory {
                 },
                 // 2. Общий профиль по умолчанию для всех остальных коммутаторов (Eltex / SNR / TFortis)
                 CredentialProfile{
-                        "akazmirchuk",
-                        "cdtn0a0h",
+                        "admin",
+                        "***",
                         std::nullopt,             // Применяется ко всем остальным IP
                         "show running-config"
                 }
