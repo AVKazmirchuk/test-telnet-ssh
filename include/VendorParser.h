@@ -91,13 +91,13 @@ namespace net_discovery {
                 return "eltex_esr";
             }
             // По умолчанию для вашего парка (90%) — коммутаторы Eltex MES
-            return "eltex_mes";
+            return "mes";
         }
 
     public:
         UniversalDeviceParser() {
             // 1. Eltex MES (коммутаторы доступа и агрегации — 90% парка)
-            profiles_["eltex_mes"] = VendorProfile{
+            profiles_["mes"] = VendorProfile{
                     "eltex_mes",
                     "Eltex MES Series",
                     "show system; show running-config",

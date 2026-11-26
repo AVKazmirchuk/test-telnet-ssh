@@ -19,7 +19,7 @@ endfunction()
 # Поместить все целевые файлы RUNTIME при сборке
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${Runtime_Output_Directory})
 
-add_executable(${Application_Name} main.cpp ConfigManager.cpp ../include/DeviceWorkerTypes.h ../include/SshWorkerPool.h ../include/TelnetWorkerPool.h ../include/Orchestrator.h ../include/TcpScanner.h ../include/VendorParser.h)
+add_executable(${Application_Name} main.cpp ../include/DeviceWorkerTypes.h ../include/SshWorkerPool.h ../include/TelnetWorkerPool.h ../include/Orchestrator.h ../include/TcpScanner.h ../include/VendorParser.h)
 
 # Задать переменную списка поддиректорий с заголовками
 set(Include_Subdirectories "")

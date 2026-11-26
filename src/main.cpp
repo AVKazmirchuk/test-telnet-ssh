@@ -5538,8 +5538,8 @@ namespace net_inventory {
 
         // Вариант Б (для быстрого ручного старта в понедельник): укажите подсеть управления или подсеть шлюза
         if (initial_subnets.empty()) {
-            uint32_t start_net  = asio::ip::make_address_v4("192.168.16.0").to_uint();
-            uint32_t start_mask = asio::ip::make_address_v4("255.255.252.0").to_uint(); // /22
+            uint32_t start_net  = asio::ip::make_address_v4("10.178.18.0").to_uint();
+            uint32_t start_mask = asio::ip::make_address_v4("255.255.254.0").to_uint(); // /23
             initial_subnets.push_back(SubnetTarget{ start_net, start_mask, "Manual Start Subnet" });
         }
 
@@ -5567,8 +5567,8 @@ namespace net_inventory {
                 },
                 // 2. Общий профиль по умолчанию для всех остальных коммутаторов (Eltex / SNR / TFortis)
                 CredentialProfile{
-                        "admin",
-                        "switch_pass",
+                        "akazmirchuk",
+                        "cdtn0a0h",
                         std::nullopt,             // Применяется ко всем остальным IP
                         "show running-config"
                 }
