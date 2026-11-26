@@ -23,6 +23,17 @@ namespace net_discovery {
         // Ссылка на планировщик асинхронных событий (io_context), в потоке которого работают сокеты и таймеры сканера
         asio::any_io_executor executor_;
 
+        asio::awaitable<void> wait_socket(tcp::socket& socket, LIBSSH2_SESSION* session) {
+            int dir = libssh2_session_block_directions(session);
+            if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
+                co_await socket.async_wait(tcp::socket::wait_write, asio::use_awaitable);
+            } else {
+                co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
+            }
+        }
+
+
+
         // Вспомогательная корутина неблокирующего чтения всего вывода одного exec-канала
         asio::awaitable<std::pair<bool, std::string>> run_exec_channel(
                 tcp::socket& socket,
@@ -35,7 +46,7 @@ namespace net_discovery {
             LIBSSH2_CHANNEL* channel = nullptr;
             while ((channel = libssh2_channel_open_session(session)) == nullptr) {
                 if (libssh2_session_last_error(session, nullptr, nullptr, 0) == LIBSSH2_ERROR_EAGAIN) {
-                    co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
+                    co_await wait_socket(socket, session);
                 } else {
                     out_error = "Failed to open SSH exec channel";
                     co_return std::make_pair(false, std::string{});
@@ -53,43 +64,122 @@ namespace net_discovery {
                         }
                     });
 
-            // Неблокирующая отправка команды в режиме exec (без интерактивного терминала и без пауз --More--).
-            // Код 0 — коммутатор принял команду к выполнению; EAGAIN — ждём сетевого обмена
+            // 1. Запрашиваем PTY
             int rc = 0;
-            while ((rc = libssh2_channel_exec(channel, command.c_str())) == LIBSSH2_ERROR_EAGAIN) {
-                co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
+            while ((rc = libssh2_channel_request_pty(channel, "vt100")) == LIBSSH2_ERROR_EAGAIN) {
+                co_await wait_socket(socket, session);
             }
             if (rc != 0) {
-                out_error = "SSH exec failed for command: " + command;
+                out_error = "Failed to request PTY";
                 co_return std::make_pair(false, std::string{});
             }
 
-            // Неблокирующее вычитывание всего вывода команды порциями по 4 КБ до закрытия канала коммутатором (bytes == 0 / EOF).
-            // Если очередная порция пакетов ещё в пути (EAGAIN), корутина засыпает на сокете, не блокируя поток
-            std::string output;
-            char buffer[4096];
-            for (;;) {
-                ssize_t bytes = libssh2_channel_read(channel, buffer, sizeof(buffer));
-                if (bytes > 0) {
-                    output.append(buffer, static_cast<size_t>(bytes));
-                } else if (bytes == LIBSSH2_ERROR_EAGAIN) {
-                    co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
-                } else if (bytes == 0) {
-                    break; // EOF — вывод команды завершён
-                } else {
-                    out_error = "SSH channel read error";
-                    co_return std::make_pair(false, output);
-                }
+            // 2. Запускаем интерактивный shell
+            while ((rc = libssh2_channel_shell(channel)) == LIBSSH2_ERROR_EAGAIN) {
+                co_await wait_socket(socket, session);
+            }
+            if (rc != 0) {
+                out_error = "Failed to start shell";
+                co_return std::make_pair(false, std::string{});
             }
 
-            co_return std::make_pair(true, std::move(output));
+            // Вспомогательная лямбда: отправка одной строки в канал
+            auto send_line = [&](const std::string& line) -> asio::awaitable<bool> {
+                std::string payload = line + "\r\n";
+                size_t sent = 0;
+                while (sent < payload.size()) {
+                    ssize_t w = libssh2_channel_write(channel, payload.data() + sent, payload.size() - sent);
+                    if (w > 0) {
+                        sent += static_cast<size_t>(w);
+                    } else if (w == LIBSSH2_ERROR_EAGAIN) {
+                        co_await wait_socket(socket, session);
+                    } else {
+                        co_return false;
+                    }
+                }
+                co_return true;
+            };
+
+            // Вспомогательная лямбда: чтение вывода до появления приглашения CLI ('#' или '>')
+            auto read_until_prompt = [&]() -> asio::awaitable<std::pair<bool, std::string>> {
+                std::string chunk_out;
+                char buf[4096];
+                for (;;) {
+                    ssize_t bytes = libssh2_channel_read(channel, buf, sizeof(buf));
+                    if (bytes > 0) {
+                        chunk_out.append(buf, static_cast<size_t>(bytes));
+                        auto end_pos = chunk_out.find_last_not_of(" \r\n\t");
+                        // Проверяем последние 32 символа буфера на наличие '#' или '>'
+                        size_t tail_start = (chunk_out.size() > 32) ? (chunk_out.size() - 32) : 0;
+                        if (chunk_out.find('#', tail_start) != std::string::npos ||
+                            chunk_out.find('>', tail_start) != std::string::npos) {
+                            co_return std::make_pair(true, std::move(chunk_out));
+                        }
+                    } else if (bytes == LIBSSH2_ERROR_EAGAIN) {
+                        co_await wait_socket(socket, session);
+                    } else if (bytes == 0) {
+                        co_return std::make_pair(true, std::move(chunk_out));
+                    } else {
+                        co_return std::make_pair(false, std::move(chunk_out));
+                    }
+                }
+            };
+
+            // 3. Вычитываем стартовый баннер и первое приглашение свитча
+            auto [banner_ok, banner] = co_await read_until_prompt();
+            if (!banner_ok) {
+                out_error = "Failed reading initial CLI prompt";
+                co_return std::make_pair(false, std::string{});
+            }
+
+            // 4. Отключаем постраничный вывод (--More--) для Eltex MES
+            if (!co_await send_line("terminal datadump")) {
+                out_error = "Failed sending terminal datadump";
+                co_return std::make_pair(false, std::string{});
+            }
+            co_await read_until_prompt();
+
+            // 5. Разбиваем command по ';' и выполняем каждую команду по очереди
+            std::string full_output;
+            size_t start = 0;
+            while (start <= command.size()) {
+                size_t sep = command.find(';', start);
+                std::string single_cmd = (sep == std::string::npos)
+                                         ? command.substr(start)
+                                         : command.substr(start, sep - start);
+
+                // Убираем ведущие и хвостовые пробелы
+                size_t first = single_cmd.find_first_not_of(" \t\r\n");
+                if (first != std::string::npos) {
+                    size_t last = single_cmd.find_last_not_of(" \t\r\n");
+                    single_cmd = single_cmd.substr(first, last - first + 1);
+
+                    if (!co_await send_line(single_cmd)) {
+                        out_error = "Failed sending command: " + single_cmd;
+                        co_return std::make_pair(false, full_output);
+                    }
+                    auto [cmd_ok, cmd_out] = co_await read_until_prompt();
+                    if (!cmd_ok) {
+                        out_error = "Failed reading output for: " + single_cmd;
+                        co_return std::make_pair(false, full_output);
+                    }
+                    full_output += cmd_out;
+                    full_output += "\n";
+                }
+
+                if (sep == std::string::npos) break;
+                start = sep + 1;
+            }
+
+            co_return std::make_pair(true, std::move(full_output));
+
         }
 
         // Основная логика одной SSH-транзакции (без внешнего таймера)
         // Полный сценарий работы с одним коммутатором в рамках одной SSH-сессии:
         // TCP-подключение -> крипто-handshake -> авторизация -> [опционально: ping прогрева + пауза] -> выполнение целевой команды.
         // Внешний таймаут накладывается уровнем выше в execute_single_ssh
-        asio::awaitable<DeviceResult> execute_ssh_core(DeviceTask task, std::shared_ptr<tcp::socket> socket_ptr) {
+        asio::awaitable<DeviceResult> execute_ssh_core(DeviceTask task, std::shared_ptr<tcp::socket> socket_ptr, std::shared_ptr<std::string> stage) {
             DeviceResult result;
             result.ip = task.ip;
             result.port = task.port;
@@ -101,9 +191,9 @@ namespace net_discovery {
 
                 // Неблокирующее для потока ОС разрешение адреса и установка TCP-соединения с коммутатором:
                 // текущая корутина приостанавливается на co_await до завершения рукопожатия TCP, уступая CPU другим воркерам
-                tcp::resolver resolver(executor_);
-                auto endpoints = co_await resolver.async_resolve(task.ip, std::to_string(task.port), asio::use_awaitable);
-                co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+                *stage = "tcp_connect";
+                tcp::endpoint ep(asio::ip::make_address(task.ip), task.port);
+                co_await socket.async_connect(ep, asio::use_awaitable);
 
                 // Создаём объект SSH-сессии и переводим её в неблокирующий режим (0):
                 // вместо заморозки потока при ожидании сети функции будут возвращать EAGAIN для передачи управления корутине
@@ -125,23 +215,25 @@ namespace net_discovery {
 
                 // 1. Криптографический Handshake
                 int rc = 0;
+                *stage = "handshake";
                 while ((rc = libssh2_session_handshake(session, socket.native_handle())) == LIBSSH2_ERROR_EAGAIN) {
-                    co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
+                    co_await wait_socket(socket, session);
                 }
                 if (rc != 0) {
                     result.error_message = "SSH handshake failed";
                     co_return result;
                 }
 
+                *stage = "auth";
                 // 2. Авторизация по логину и паролю
                 while ((rc = libssh2_userauth_password(session, task.username.c_str(), task.password.c_str())) == LIBSSH2_ERROR_EAGAIN) {
-                    co_await socket.async_wait(tcp::socket::wait_read, asio::use_awaitable);
+                    co_await wait_socket(socket, session);
                 }
                 if (rc != 0) {
                     result.error_message = "SSH authentication failed";
                     co_return result;
                 }
-
+                *stage = "open_channel";
                 // 3. Если задана команда прогрева FDB (Фаза 2: ping + пауза)
                 if (task.warmup_command.has_value() && !task.warmup_command->empty()) {
                     auto [ok_ping, ping_out] = co_await run_exec_channel(socket, session, *task.warmup_command, result.error_message);
@@ -155,7 +247,7 @@ namespace net_discovery {
                     boost::system::error_code ec;
                     co_await warmup_timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
                 }
-
+                *stage = "open_channel";
                 // 4. Выполнение целевой команды (сбор конфигурации или MAC-таблицы)
                 auto [ok_cmd, cmd_out] = co_await run_exec_channel(socket, session, task.command, result.error_message);
                 if (!ok_cmd) {
@@ -177,12 +269,14 @@ namespace net_discovery {
         // Если свитч завис на любом этапе, таймер принудительно закрывает сокет извне, сворачивает корутину и освобождает воркер
         asio::awaitable<DeviceResult> execute_single_ssh(DeviceTask task, std::chrono::milliseconds timeout_ms) {
 
+            auto stage = std::make_shared<std::string>("init");
+
             auto socket_ptr = std::make_shared<tcp::socket>(executor_);
             asio::steady_timer timeout_timer(executor_);
             timeout_timer.expires_after(timeout_ms);
 
             auto race = co_await (
-                    execute_ssh_core(task, socket_ptr) ||
+                    execute_ssh_core(task, socket_ptr, stage) ||
                     timeout_timer.async_wait(asio::use_awaitable)
             );
 
@@ -196,6 +290,7 @@ namespace net_discovery {
                 timeout_res.port = task.port;
                 timeout_res.success = false;
                 timeout_res.error_message = "SSH operation timed out";
+                timeout_res.error_message = "SSH timed out at stage: " + *stage;
                 co_return timeout_res;
             }
 

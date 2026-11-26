@@ -303,9 +303,15 @@ namespace net_discovery {
                 SubnetScanResult scan_res = co_await scanner_->scan_subnet(
                         current_subnet, {22, 23, 2222}, config_.scan_timeout, config_.scanner_concurrency);
 
+                //SubnetScanResult scan_res; scan_res.alive_hosts = {{"10.178.18.214", {{22}}}};
                 std::cout << "[TcpScanner] Подсеть " << asio::ip::address_v4(current_subnet.net_ip).to_string()
                           << ": живых хостов = " << scan_res.alive_hosts.size()
                           << ", маяк = " << scan_res.free_beacon_ip.value_or("нет") << "\n";
+
+                asio::steady_timer settle_timer(executor_);
+                settle_timer.expires_after(std::chrono::milliseconds(1500));
+                boost::system::error_code settle_ec;
+                co_await settle_timer.async_wait(asio::redirect_error(asio::use_awaitable, settle_ec));
 
                 if (scan_res.alive_hosts.empty()) {
                     continue;
