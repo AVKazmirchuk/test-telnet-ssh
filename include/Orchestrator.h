@@ -226,7 +226,7 @@ namespace net_discovery {
                 // Если устройство отвечает только по Telnet (например, TFortis),
                 // а команда осталась дефолтной Cisco/Eltex, подставляем команду TFortis "show all"
                 if (!has_ssh && task.command == "show running-config") {
-                    task.command = "show all";
+                    //task.command = "show all";
                 }
 
                 if (has_ssh) {
@@ -403,6 +403,11 @@ namespace net_discovery {
 // ====================================================================
 // ФАЗА 2: Атомарный прогрев (ARP-маяк) и снятие FDB по L2-доменам
 // ====================================================================
+
+            asio::steady_timer settle_timer(executor_);
+            settle_timer.expires_after(std::chrono::milliseconds(6000));
+            boost::system::error_code settle_ec;
+            co_await settle_timer.async_wait(asio::redirect_error(asio::use_awaitable, settle_ec));
 
             //Получаем текущую отметку времени
             const int64_t now_ts = std::chrono::duration_cast<std::chrono::seconds>(

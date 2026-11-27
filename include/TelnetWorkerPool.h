@@ -181,7 +181,7 @@ namespace net_discovery {
                     co_return result;
                 }
 
-                auto auth_step_timeout = std::chrono::milliseconds(2000);
+                auto auth_step_timeout = std::chrono::milliseconds(5000);
                 const std::vector<std::string> login_prompts = { "user", "login", "name:" };
                 const std::vector<std::string> pass_prompts  = { "word", "pass" };
                 const std::vector<std::string> cli_prompts   = { "#", ">" };
@@ -194,7 +194,7 @@ namespace net_discovery {
 
                 //std::string login_payload = task.username + "\r\n";
                 send_text(session, task.username + "\r\n");
-                session_buffer.clear();
+                //session_buffer.clear();
 
                 // 2. Ждём приглашения пароля
                 if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, pass_prompts, auth_step_timeout)) {

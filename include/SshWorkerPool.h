@@ -39,6 +39,8 @@ namespace net_discovery {
                 tcp::socket& socket,
                 LIBSSH2_SESSION* session,
                 const std::string& command,
+                const std::optional<std::string>& warmup_cmd,
+                std::chrono::milliseconds warmup_delay,
                 std::string& out_error)
         {
             // Неблокирующее открытие логического канала внутри SSH-сессии для выполнения команды.
@@ -234,24 +236,13 @@ namespace net_discovery {
                     co_return result;
                 }
                 *stage = "open_channel";
-                // 3. Если задана команда прогрева FDB (Фаза 2: ping + пауза)
-                if (task.warmup_command.has_value() && !task.warmup_command->empty()) {
-                    auto [ok_ping, ping_out] = co_await run_exec_channel(socket, session, *task.warmup_command, result.error_message);
-                    if (!ok_ping) {
-                        co_return result;
-                    }
-
-                    // Неблокирующая пауза внутри сессии, пока остальные воркеры тоже пингуют
-                    asio::steady_timer warmup_timer(executor_);
-                    warmup_timer.expires_after(task.warmup_delay);
-                    boost::system::error_code ec;
-                    co_await warmup_timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
-                }
-                *stage = "open_channel";
-                // 4. Выполнение целевой команды (сбор конфигурации или MAC-таблицы)
-                auto [ok_cmd, cmd_out] = co_await run_exec_channel(socket, session, task.command, result.error_message);
-                if (!ok_cmd) {
-                    co_return result;
+                std::string err_msg;
+                auto [exec_ok, output] = co_await run_exec_channel(
+                        socket, session, task.command, task.warmup_command, task.warmup_delay, err_msg
+                );
+                if (!exec_ok) {
+                    res.error_message = err_msg;
+                    co_return res;
                 }
 
                 result.raw_output = std::move(cmd_out);
