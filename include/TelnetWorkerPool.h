@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <telnetpp/session.hpp>
+#include <telnetpp/options/echo/client.hpp>
 
 namespace net_discovery {
 
@@ -158,6 +159,8 @@ namespace net_discovery {
             asio_script_channel script_channel{ socket };
             telnetpp::session session(script_channel);
 
+
+
             std::string session_buffer;
             session.async_read([&](telnetpp::bytes data) {
                 if (!data.empty()) {
@@ -181,9 +184,14 @@ namespace net_discovery {
                     co_return result;
                 }
 
+                // Активируем Echo ПОСЛЕ того, как TCP-сокет открыт, чтобы IAC DO ECHO реально ушёл в сеть!
+                telnetpp::options::echo::client echo_client{ session };
+                session.install(echo_client);
+                echo_client.activate();
+
                 auto auth_step_timeout = std::chrono::milliseconds(5000);
-                const std::vector<std::string> login_prompts = { "user", "login", "name:" };
-                const std::vector<std::string> pass_prompts  = { "word", "pass" };
+                const std::vector<std::string> login_prompts = { "user name>", "user", "login", "name:" };
+                const std::vector<std::string> pass_prompts  = { "user password>", "word", "pass" };
                 const std::vector<std::string> cli_prompts   = { "#", ">" };
 
                 // 1. Ждём приглашения логина
