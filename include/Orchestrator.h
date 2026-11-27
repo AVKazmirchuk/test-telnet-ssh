@@ -61,8 +61,8 @@ namespace net_discovery {
         std::chrono::milliseconds phase1_timeout{12000};
         std::chrono::milliseconds phase2_timeout{25000}; // Увеличенный запас 25 сек на ping + паузу + выгрузку FDB
         std::chrono::milliseconds fdb_warmup_delay{2500};
-        size_t scanner_concurrency = 128;
-        size_t worker_concurrency = 32;
+        size_t scanner_concurrency = 24; //128;
+        size_t worker_concurrency = 6; //32;
     };
 
     // Результат разбора конфигурации одного устройства (выход парсера в Фазе 1)
@@ -301,7 +301,7 @@ namespace net_discovery {
                 // 1. Сканируем текущую подсеть на открытые порты 22 и 23
                 //Результат сканирования подсети (исходная подсеть, список живых хостов с открытыми портами и свободный IP-маяк)
                 SubnetScanResult scan_res = co_await scanner_->scan_subnet(
-                        current_subnet, {22, 23, 2222}, config_.scan_timeout, config_.scanner_concurrency);
+                        current_subnet, {22, 23}, config_.scan_timeout, config_.scanner_concurrency);
 
                 //SubnetScanResult scan_res; scan_res.alive_hosts = {{"10.178.18.214", {{22}}}};
                 std::cout << "[TcpScanner] Подсеть " << asio::ip::address_v4(current_subnet.net_ip).to_string()
@@ -309,7 +309,7 @@ namespace net_discovery {
                           << ", маяк = " << scan_res.free_beacon_ip.value_or("нет") << "\n";
 
                 asio::steady_timer settle_timer(executor_);
-                settle_timer.expires_after(std::chrono::milliseconds(1500));
+                settle_timer.expires_after(std::chrono::milliseconds(4000));
                 boost::system::error_code settle_ec;
                 co_await settle_timer.async_wait(asio::redirect_error(asio::use_awaitable, settle_ec));
 
