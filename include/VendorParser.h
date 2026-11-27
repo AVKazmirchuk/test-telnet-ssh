@@ -90,6 +90,9 @@ namespace net_discovery {
             if (lower.find("esr-") != std::string::npos || lower.find("eltex") != std::string::npos && lower.find("security gateway") != std::string::npos) {
                 return "eltex_esr";
             }
+            if (lower.find("cisco") != std::string::npos || lower.find("base ethernet mac address") != std::string::npos) {
+                return "cisco";
+            }
             // По умолчанию для вашего парка (90%) — коммутаторы Eltex MES
             return "mes";
         }
@@ -139,6 +142,14 @@ namespace net_discovery {
                     "show network interface",
                     "ping {IP} count 1",
                     "show network arp"
+            };
+
+            profiles_["cisco"] = VendorProfile{
+                    "cisco",
+                    "Cisco IOS",
+                    "terminal length 0; show version; show running-config",
+                    "ping {IP} repeat 1",
+                    "show mac address-table"
             };
         }
 

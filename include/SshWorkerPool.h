@@ -47,7 +47,7 @@ namespace net_discovery {
             // Если ответ от коммутатора ещё не пришёл (EAGAIN), корутина засыпает до появления данных в сокете, не блокируя поток
             LIBSSH2_CHANNEL* channel = nullptr;
             while ((channel = libssh2_channel_open_session(session)) == nullptr) {
-                if (libssh2_session_last_error(session, nullptr, nullptr, 0) == LIBSSH2_ERROR_EAGAIN) {
+                if (libssh2_session_last_errno(session) == LIBSSH2_ERROR_EAGAIN) {
                     co_await wait_socket(socket, session);
                 } else {
                     out_error = "Failed to open SSH exec channel";
@@ -58,13 +58,8 @@ namespace net_discovery {
             // Гарантированное закрытие канала при выходе
             // Автоматический «охранник» ресурса (RAII): при любом выходе из корутины (успех, ошибка или отмена по таймауту)
             // гарантированно вызовет переданную функцию-очиститель и освободит память C-структуры канала libssh2
-            auto channel_guard = std::unique_ptr<LIBSSH2_CHANNEL, void(*)(LIBSSH2_CHANNEL*)>(
-                    channel, [](LIBSSH2_CHANNEL* ch) {
-                        if (ch) {
-                            libssh2_channel_close(ch);
-                            libssh2_channel_free(ch);
-                        }
-                    });
+            std::unique_ptr<LIBSSH2_CHANNEL, decltype(&libssh2_channel_free)> channel_guard(channel, libssh2_channel_free);
+
 
             // 1. Запрашиваем PTY
             int rc = 0;
@@ -76,7 +71,6 @@ namespace net_discovery {
                 co_return std::make_pair(false, std::string{});
             }
 
-            // 2. Запускаем интерактивный shell
             while ((rc = libssh2_channel_shell(channel)) == LIBSSH2_ERROR_EAGAIN) {
                 co_await wait_socket(socket, session);
             }
@@ -110,8 +104,6 @@ namespace net_discovery {
                     ssize_t bytes = libssh2_channel_read(channel, buf, sizeof(buf));
                     if (bytes > 0) {
                         chunk_out.append(buf, static_cast<size_t>(bytes));
-                        auto end_pos = chunk_out.find_last_not_of(" \r\n\t");
-                        // Проверяем последние 32 символа буфера на наличие '#' или '>'
                         size_t tail_start = (chunk_out.size() > 32) ? (chunk_out.size() - 32) : 0;
                         if (chunk_out.find('#', tail_start) != std::string::npos ||
                             chunk_out.find('>', tail_start) != std::string::npos) {
@@ -134,12 +126,18 @@ namespace net_discovery {
                 co_return std::make_pair(false, std::string{});
             }
 
-            // 4. Отключаем постраничный вывод (--More--) для Eltex MES
             if (!co_await send_line("terminal datadump")) {
                 out_error = "Failed sending terminal datadump";
                 co_return std::make_pair(false, std::string{});
             }
             co_await read_until_prompt();
+
+            if (warmup_delay.count() > 0) {
+                asio::steady_timer w_timer(executor_);
+                w_timer.expires_after(warmup_delay);
+                boost::system::error_code w_ec;
+                co_await w_timer.async_wait(asio::redirect_error(asio::use_awaitable, w_ec));
+            }
 
             // 5. Разбиваем command по ';' и выполняем каждую команду по очереди
             std::string full_output;
@@ -235,18 +233,20 @@ namespace net_discovery {
                     result.error_message = "SSH authentication failed";
                     co_return result;
                 }
+
+                // 3. Выполнение прогрева и основной команды в одном канале
                 *stage = "open_channel";
                 std::string err_msg;
                 auto [exec_ok, output] = co_await run_exec_channel(
                         socket, session, task.command, task.warmup_command, task.warmup_delay, err_msg
                 );
                 if (!exec_ok) {
-                    res.error_message = err_msg;
-                    co_return res;
+                    result.error_message = err_msg;
+                    co_return result;
                 }
 
-                result.raw_output = std::move(cmd_out);
                 result.success = true;
+                result.raw_output = std::move(output);
             }
             catch (const std::exception& e) {
                 result.error_message = std::string("SSH exception: ") + e.what();

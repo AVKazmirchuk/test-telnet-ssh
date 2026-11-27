@@ -186,24 +186,27 @@ namespace net_discovery {
                 const std::vector<std::string> pass_prompts  = { "word", "pass" };
                 const std::vector<std::string> cli_prompts   = { "#", ">" };
 
-                // 1. Ждём приглашения логина (сразу по всем вариантам, без двойного ожидания)
+                // 1. Ждём приглашения логина
                 if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, login_prompts, auth_step_timeout)) {
-                    send_text(session, "\r\n");
-                    co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, login_prompts, auth_step_timeout);
+                    send_text(session, "\r");
+                    if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, login_prompts, auth_step_timeout)) {
+                        result.error_message = "Timeout waiting for Login prompt";
+                        co_return result;
+                    }
                 }
 
-                //std::string login_payload = task.username + "\r\n";
-                send_text(session, task.username + "\r\n");
-                //session_buffer.clear();
+                // Отправляем логин (для TFortis критично использовать одиночный \r, чтобы \n не ушёл как пустой пароль)
+                send_text(session, task.username + "\r");
 
                 // 2. Ждём приглашения пароля
                 if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, pass_prompts, auth_step_timeout)) {
-                    result.error_message = "Timeout waiting for Password prompt";
+                    std::string tail = session_buffer.size() > 60 ? session_buffer.substr(session_buffer.size() - 60) : session_buffer;
+                    for (char& c : tail) if (c == '\r' || c == '\n') c = ' ';
+                    result.error_message = "Timeout waiting for Password prompt. Tail: [" + tail + "]";
                     co_return result;
                 }
 
-                //std::string pass_payload = task.password + "\r\n";
-                send_text(session, task.password + "\r\n");
+                send_text(session, task.password + "\r");
                 session_buffer.clear();
 
                 // 3. Ждём оперативного приглашения CLI ("#" или ">")
@@ -212,6 +215,8 @@ namespace net_discovery {
                     co_return result;
                 }
                 session_buffer.clear();
+
+
 
                 // 4. Если задана команда прогрева FDB (Фаза 2: ping + пауза в той же сессии)
                 if (task.warmup_command.has_value() && !task.warmup_command->empty()) {
@@ -228,15 +233,39 @@ namespace net_discovery {
 
                 // 5. Отправляем целевую команду и ждём возврата любого CLI-промпта ("#" или ">")
                 //std::string cmd_payload = task.command + "\r\n";
-                send_text(session, task.command + "\r\n");
+                // Разбиваем task.command по ';' и выполняем по очереди
+                std::string full_output;
+                size_t start = 0;
+                while (start <= task.command.size()) {
+                    size_t sep = task.command.find(';', start);
+                    std::string single_cmd = (sep == std::string::npos)
+                                             ? task.command.substr(start)
+                                             : task.command.substr(start, sep - start);
 
-                if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, cli_prompts, timeout_ms)) {
-                    result.error_message = "Timeout waiting for command output completion";
-                    co_return result;
+                    size_t first = single_cmd.find_first_not_of(" \t\r\n");
+                    if (first != std::string::npos) {
+                        size_t last = single_cmd.find_last_not_of(" \t\r\n");
+                        single_cmd = single_cmd.substr(first, last - first + 1);
+
+                        session_buffer.clear();
+                        send_text(session, single_cmd + "\r\n");
+
+                        if (!co_await wait_for_any_prompt(socket, script_channel, session, session_buffer, cli_prompts, std::chrono::milliseconds(8000))) {
+                            result.error_message = "Timeout waiting for output of: " + single_cmd;
+                            co_return result;
+                        }
+                        full_output += session_buffer;
+                        full_output += "\n";
+                    }
+
+                    if (sep == std::string::npos) break;
+                    start = sep + 1;
                 }
 
-                result.raw_output = std::move(session_buffer);
                 result.success = true;
+                result.raw_output = std::move(full_output);
+                co_return result;
+
             }
             catch (const std::exception& e) {
                 result.error_message = std::string("Telnet exception: ") + e.what();

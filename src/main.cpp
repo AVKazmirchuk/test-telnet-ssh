@@ -5560,10 +5560,10 @@ namespace net_inventory {
         std::vector<CredentialProfile> cred_profiles = {
                 // 1. Индивидуальный профиль для UserGate (своя стартовая команда и свой пароль)
                 CredentialProfile{
-                        "ug_admin",
-                        "ug_secret_pass",
-                        "192.168.16.1",           // IP вашего UserGate
-                        "show network interface"  // Команда чтения интерфейсов UGOS
+                        "admin",
+                        "cdtn0a0h",
+                        "10.178.18.1",           // IP вашего UserGate
+                        "show system; show running-config"  // Команда чтения интерфейсов UGOS
                 },
                 // 2. Общий профиль по умолчанию для всех остальных коммутаторов (Eltex / SNR / TFortis)
                 CredentialProfile{
@@ -5571,7 +5571,55 @@ namespace net_inventory {
                         "cdtn0a0h",
                         std::nullopt,             // Применяется ко всем остальным IP
                         "show system; show running-config"
-                }
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.194",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.196",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.161",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.160",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.159",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.197",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "akazmirchuk",
+                        "cdtn0a0h",
+                        "10.178.18.195",           // IP вашего UserGate
+                        "terminal length 0; terminal datadump; show version; show system; show running-config" // Команда чтения интерфейсов UGOS
+                },
+                CredentialProfile{
+                        "Admin",
+                        "TFORTIScdtn0a0h",
+                        "10.178.18.95",           // IP вашего UserGate
+                        "show switch; show fdb" // Команда чтения интерфейсов UGOS
+                },
         };
 
         // 3. Создаём Оркестратор и запускаем полный цикл (Фаза 1: BFS -> Фаза 2: FDB)
