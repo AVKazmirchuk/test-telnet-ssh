@@ -274,6 +274,7 @@ namespace net_discovery {
             // пополняется по мере обнаружения новых локальных подсетей на L3-маршрутизаторах
             std::deque<SubnetTarget> subnet_queue;
 
+            //Если в контейнере посещённых сетей нет сети из первоначального списка - добавляем её в очередь подсетей
             for (const auto& s : initial_subnets) {
                 if (visited_subnets_.insert(make_subnet_key(s)).second) {
                     subnet_queue.push_back(s);
@@ -294,8 +295,13 @@ namespace net_discovery {
             // ====================================================================
             // ФАЗА 1: Поиск в ширину (BFS) по подсетям и определение L3-границ
             // ====================================================================
+
+            //Пока очередь (FIFO) subnet_queue подсетей, ожидающих сканирования в рамках алгоритма поиска в ширину (BFS) не пустая
             while (!subnet_queue.empty()) {
+
+                //Берём очередную сеть из очереди subnet_queue подсетей, ожидающих сканирования
                 SubnetTarget current_subnet = subnet_queue.front();
+                //Удаляем взятую подсеть из очереди
                 subnet_queue.pop_front();
 
                 // 1. Сканируем текущую подсеть на открытые порты 22 и 23
@@ -308,11 +314,13 @@ namespace net_discovery {
                           << ": живых хостов = " << scan_res.alive_hosts.size()
                           << ", маяк = " << scan_res.free_beacon_ip.value_or("нет") << "\n";
 
+                //После опроса сети необходимо сделать паузу перед чтением конфигурации коммутаторов, для ...
                 asio::steady_timer settle_timer(executor_);
                 settle_timer.expires_after(std::chrono::milliseconds(4000));
                 boost::system::error_code settle_ec;
                 co_await settle_timer.async_wait(asio::redirect_error(asio::use_awaitable, settle_ec));
 
+                //Если доступных узлов нет - переходим к следующей сети
                 if (scan_res.alive_hosts.empty()) {
                     continue;
                 }
@@ -327,15 +335,22 @@ namespace net_discovery {
                 // 3. Параллельно опрашиваем SSH и Telnet устройства в текущем сегменте
                 //Унифицированный результат опроса устройства
                 std::vector<DeviceResult> all_results;
+
+                //Если задача не пуста (для этого протокола есть коммутаторы)
                 if (!ssh_tasks.empty()) {
+                    //Опрашиваем коммутаторы по протоколу SSH параллельно
                     auto ssh_res = co_await ssh_pool_->execute_parallel_commands(
                             ssh_tasks, config_.phase1_timeout, config_.worker_concurrency);
+                    //Добавляем в результат опроса устройства
                     all_results.insert(all_results.end(),
                                        std::make_move_iterator(ssh_res.begin()), std::make_move_iterator(ssh_res.end()));
                 }
+                //Если задача не пуста (для этого протокола есть коммутаторы)
                 if (!telnet_tasks.empty()) {
+                    //Опрашиваем коммутаторы по протоколу Telnet параллельно
                     auto tel_res = co_await telnet_pool_->execute_parallel_commands(
                             telnet_tasks, config_.phase1_timeout, config_.worker_concurrency);
+                    //Добавляем в результат опроса устройства
                     all_results.insert(all_results.end(),
                                        std::make_move_iterator(tel_res.begin()), std::make_move_iterator(tel_res.end()));
                 }
@@ -347,6 +362,7 @@ namespace net_discovery {
                 domain_batch.subnet = current_subnet;
                 domain_batch.beacon_ip = scan_res.free_beacon_ip;
 
+                //Для каждого ответившего устройства
                 for (const auto& res : all_results) {
                     std::cout << "  [Фаза 1] " << res.ip << ":" << res.port
                               << " -> " << (res.success ? "OK (" + std::to_string(res.raw_output.size()) + " байт)"
@@ -364,8 +380,10 @@ namespace net_discovery {
 
                     //Результат разбора конфигурации одного устройства (выход парсера в Фазе 1)
                     ParsedDeviceConfig& cfg = *parsed_opt;
+                    //Отмечаем признак использования SSH
                     cfg.use_ssh = (res.port == 22 || res.port == 2222);
                     cfg.access_port = res.port;
+                    //Если base_mac есть — добавляем в белый список собственных MAC-адресов всех найденных концентраторов
                     if (cfg.base_mac != 0) {
                         concentrator_white_macs_.insert(cfg.base_mac);
                     }
@@ -375,8 +393,9 @@ namespace net_discovery {
                               << ", L3-роутер: " << (cfg.is_l3_router ? "ДА" : "НЕТ")
                               << ", подсетей: " << cfg.connected_subnets.size() << "\n";
 
-                    //Добавляем во временный накопитель данных для текущего L2-сегмента коммутатор
+                    //Добавляем коммутатор во временный накопитель данных для текущего L2-сегмента
                     domain_batch.switch_ips.push_back(cfg.ip);
+                    //Добавляем в кэш разведанных устройств по IP
                     discovered_devices_[cfg.ip] = cfg;
 
                     // Если устройство является L3-границей (маршрутизатором),
@@ -384,11 +403,14 @@ namespace net_discovery {
                     // Если парсер определил устройство как L3-маршрутизатор (извлек из его конфига 2+ подсети или маршруты),
                     // перебираем все найденные на его интерфейсах локальные подсети (cfg.connected_subnets) и ставим ещё не посещённые в очередь BFS
                     if (cfg.is_l3_router) {
+                        //Для каждой новой подсети текущего маршрутизатора
                         for (const auto& next_sub : cfg.connected_subnets) {
+                            //Если в контейнере посещённых сетей нет новой подсети текущего маршрутизатора
                             if (visited_subnets_.insert(make_subnet_key(next_sub)).second) {
                                 std::cout << "      + Новая подсеть в очередь BFS: "
                                           << asio::ip::address_v4(next_sub.net_ip).to_string()
                                           << " / " << asio::ip::address_v4(next_sub.mask).to_string() << "\n";
+                                //Добавляем его новую локальные подсеть в очередь BFS
                                 subnet_queue.push_back(next_sub);
                             }
                         }
@@ -404,6 +426,7 @@ namespace net_discovery {
 // ФАЗА 2: Атомарный прогрев (ARP-маяк) и снятие FDB по L2-доменам
 // ====================================================================
 
+            //Делаем задержку зачем-то
             asio::steady_timer settle_timer(executor_);
             settle_timer.expires_after(std::chrono::milliseconds(6000));
             boost::system::error_code settle_ec;
@@ -415,18 +438,27 @@ namespace net_discovery {
 
             //Для каждого замкнутого домена
             for (const auto& domain : ready_domains) {
+
+                //Формируем параллельные задачи для SSH и Telnet пулов
                 std::vector<DeviceTask> fdb_ssh_tasks;
                 std::vector<DeviceTask> fdb_telnet_tasks;
 
-                //Для каждого адреса
+                //Для каждого адреса этого домена
                 for (const auto& sw_ip : domain.switch_ips) {
+                    //Получаем узел из кэша разведанных устройств
                     const auto& dev = discovered_devices_.at(sw_ip);
+
+                    //Получаем профиль учётных данных и команды по адресу
                     CredentialProfile cred = resolve_credentials(dev.ip);
+
+                    //Создаём задачу
                     DeviceTask task;
+                    //Заполняем задачу данными (адрес, порт, логин, пароль)
                     task.ip = dev.ip;
                     task.port = dev.access_port;
                     task.username = cred.username;
                     task.password = cred.password;
+                    //Сгенерировать команду на получение таблицы FDB
                     task.command = parser_->build_fdb_command(dev.vendor_profile);
 
                     // Если в домене есть свободный IP-маяк — включаем шаг прогрева FDB
@@ -436,9 +468,10 @@ namespace net_discovery {
 
                         //Сгенерировать команду на пинг
                         task.warmup_command = parser_->build_ping_command(dev.vendor_profile, *domain.beacon_ip);
-                        //Выждать время
+                        //Записать в здачу выждать время
                         task.warmup_delay = config_.fdb_warmup_delay;
                     }
+
                     // Распределяем по тому же протоколу, по которому устройство ответило в Фазе 1
                     if (dev.use_ssh) {
                         fdb_ssh_tasks.push_back(std::move(task));
@@ -448,26 +481,38 @@ namespace net_discovery {
                 }
 
                 // Запускаем массовый параллельный прогрев + чтение FDB в рамках L2-домена
-                //Результат опроса устройств
+
                 // Общий таймаут сессии увеличен до 12 сек: учитывает время самого ping (~2-3 сек) +
                 // паузу синхронизации warmup_delay (2.5 сек) + крипто-handshake и выгрузку больших FDB-таблиц
+
+                //Результат опроса устройств
                 std::vector<DeviceResult> fdb_results;
+
+                //Если задача не пуста (для этого протокола есть коммутаторы)
                 if (!fdb_ssh_tasks.empty()) {
+                    //Опрашиваем коммутаторы по протоколу SSH параллельно
                     auto ssh_fdb = co_await ssh_pool_->execute_parallel_commands(
                             fdb_ssh_tasks, config_.phase2_timeout, config_.worker_concurrency);
+                    //Добавляем в результат опроса устройства
                     fdb_results.insert(fdb_results.end(),
                                        std::make_move_iterator(ssh_fdb.begin()), std::make_move_iterator(ssh_fdb.end()));
                 }
+                //Если задача не пуста (для этого протокола есть коммутаторы)
                 if (!fdb_telnet_tasks.empty()) {
+                    //Опрашиваем коммутаторы по протоколу Telnet параллельно
                     auto tel_fdb = co_await telnet_pool_->execute_parallel_commands(
                             fdb_telnet_tasks, config_.phase2_timeout, config_.worker_concurrency);
+                    //Добавляем в результат опроса устройства
                     fdb_results.insert(fdb_results.end(),
                                        std::make_move_iterator(tel_fdb.begin()), std::make_move_iterator(tel_fdb.end()));
                 }
 
                 // Контроль целостности (Сценарий 2: проверка, что все ожидаемые узлы ответили)
                 size_t success_count = 0;
+
+                //Для каждого результата
                 for (const auto& r : fdb_results) {
+                    //Если таблица получена
                     if (r.success) {
                         ++success_count;
                     } else {
@@ -478,6 +523,8 @@ namespace net_discovery {
                 // 1. Логируем итог опроса домена (до проверки на неполноту)
                 std::cout << "[Фаза 2] L2-домен " << asio::ip::address_v4(domain.subnet.net_ip).to_string()
                           << ": ответило " << success_count << "/" << domain.switch_ips.size() << " устройств.\n";
+
+                //Если произошёл обрыв части узлов при снятии FDB
                 if (success_count < domain.switch_ips.size()) {
 
                     // Зафиксирован обрыв части узлов во время снятия FDB:
@@ -488,14 +535,22 @@ namespace net_discovery {
 
                 // Фильтруем полученные FDB-таблицы строго по белому списку concentrator_white_macs_
                 // и записываем в накопительную таблицу ConcentratorsFdbTable (с текущим timestamp)
+
+                //Проверенные мас-адреса
                 size_t valid_fdb_links = 0;
+                //Для каждого результата опроса таблицы
                 for (const auto& r : fdb_results) {
+                    //Получить ссылку на устройство
                     const auto& dev = discovered_devices_.at(r.ip);
+                    //Прочитать MAC-таблицу
                     auto entries = parser_->parse_fdb_output(dev.vendor_profile, r.raw_output);
+                    //Для каждой записи в таблице
                     for (const auto& entry : entries) {
+                        //Если мас-адрес есть в белом списке собственных MAC-адресов всех найденных концентраторов и не является его собственным
                         if (concentrator_white_macs_.contains(entry.mac) && entry.mac != dev.base_mac) {
                             // Валидная связь: dev.ip (entry.port_name, entry.vlan_tag) -> entry.mac
                             ++valid_fdb_links;
+                            //Добавить в итоговую валидную таблицу ConcentratorsFdbTable
                             collected_fdb_records_.push_back(CollectedFdbRecord{
                                     domain.subnet.net_ip,
                                     domain.subnet.mask,
